@@ -1,0 +1,32 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+
+#assign a random password for good measure
+echo ubuntu:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
+sudo -u ubuntu openssl genrsa -out /dev/shm/main_server_private.pem 4096
+sudo -u ubuntu openssl rsa -in /dev/shm/main_server_private.pem -outform PEM -pubout -out /dev/shm/main_server_public.pem
+echo "TLSNotary main server pubkey which is embedded into the signing server:"
+cat /dev/shm/main_server_public.pem
+#I got weird permission errors when trying to access files in /home/ubuntu with sudo -u ubuntu
+#That's why I'm copying them to /dev/shm
+cp -R /root/notary /dev/shm
+chmod -R 777 /dev/shm/notary
+chown -R ubuntu:ubuntu /dev/shm/notary
+
+#anti DoS: allow no more than 15 new connections every 60 seconds
+iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --set
+iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --update --seconds 60 --hitcount 15 -j DROP
+
+sudo -u ubuntu python2.7 /dev/shm/notary/notaryserver.py &
+
+exit 0

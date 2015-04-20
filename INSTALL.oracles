@@ -1,0 +1,146 @@
+-------------------------------------------------------------------------------
+HOW TO CREATE A TLSNOTARY ORACLE EBS SNAPSHOT.
+-------------------------------------------------------------------------------
+Change to Asia Pacific Singapore region.
+Create a volume from snap-3eb0e00a (this is the snapshot used by Ubuntu Server 14.04 LTS (PV), SSD Volume Type - ami-e8f1c1ba).
+Attach the volume to any running instance as e.g. /dev/sdf.
+Optionally you may want to copy all files from the volume to a volume of smaller size (otherwise the resulting snapshot will be the default 8GB).
+
+From within the instance:	
+<bash>
+  git clone https://github.com/themighty1/taas-poc-1
+  cd taas-poc-1
+  sudo -s
+  mkdir /mnt/disk
+  mount /dev/xvdf /mnt/disk
+  DISK=/mnt/disk
+  rm $DISK/etc/init.d/ssh
+  rm $DISK/usr/sbin/sshd
+  sed -i '136s/.*/ kernel          \/boot\/vmlinuz-3.13.0-48-generic root=\/dev\/xvda ro console=hvc0/' $DISK/boot/grub/menu.lst
+  sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
+  sed -i 's/- runcmd//' $DISK/etc/cloud/cloud.cfg
+  sed -i 's/- rightscale_userdata//' $DISK/etc/cloud/cloud.cfg
+  sed -i 's/- scripts-user//' $DISK/etc/cloud/cloud.cfg
+</bash>
+
+For main server instance:
+<bash>
+	cp -R notary $DISK/root
+	cp notary/rc.local $DISK/etc/rc.local
+	chmod 755 $DISK/etc/rc.local && chown root:root $DISK/etc/rc.local
+</bash>
+	
+For signing server instance:
+<bash>
+	cp -R signing_server $DISK/root
+	cp signing_server/rc.local $DISK/etc/rc.local
+	chmod 755 $DISK/etc/rc.local && chown root:root $DISK/etc/rc.local	
+</bash>
+	
+	
+"umount /dev/xvdf" and detach it in the AWS console.
+Create a public snapshot from the volume and note the snapshot ID.
+
+Create an AMI from the snapshot, making sure that:
+Virtualization type is Paravirtual
+Kernel ID is aki-503e7402
+Root device name is /dev/xvda
+Note the AMI ID and make the AMI public.
+
+
+-------------------------------------------------------------------------------
+HOW TO LAUNCH AN ORACLE INSTANCE FROM THE PUBLIC SNAPSHOT.
+-------------------------------------------------------------------------------
+Launch the AMI you created from AWS management console. Choose "Proceed without a key pair".
+
+Make sure that:
+  Instance's "launchTime" and volume's "attachTime" happened on the same minute with no more than 3 seconds between the events.
+  Console Output (right-click an instance ->Instance Settings -> Get System Log) is available, since it was observed that sometimes instance doesn't have any.
+  
+After the main server AMI started, copy main server pubkey from Console Log into pubkey.pem
+Start the signing server with TCP port 10004 open and send it pubkey.pem: cat pubkey.pem | nc sigserverIP 10004
+Make sure you hit the 20 sec window when the signing server is listening on that port, otherwise you'll get TCP RST.
+Feed the sig server IP to main server: echo -n '1.2.3.4' | nc mainserverIP 10011
+
+
+-------------------------------------------------------------------------------
+HOW CAN YOU PROVE TO THE WORLD THAT A CERTAIN IP ADDRESS IS RUNNING THE ORACLE INSTANCE
+-------------------------------------------------------------------------------
+
+Use aws_query.py to create and publish URLs for requests 
+DescribeInstances
+DescribeInstanceAttribute
+DescribeVolumes
+GetUser
+GetConsoleOutput
+
+
+-------------------------------------------------------------------------------
+FOR VERIFIERS: HOW TO CHECK THAT THE SNAPSHOT CONTENTS WAS NOT MALICIOUSLY MODIFIED.
+-------------------------------------------------------------------------------
+
+
+Repeat all the steps described in "HOW TO CREATE AN ORACLE EBS SNAPSHOT" but don't create a public snapshot.
+Attach the resulting volume (volX) to a running instance as /dev/sdg
+Create a volume from the snapshot (volY) you are verifying and attach it to /dev/sdh
+After that, run from within the instance
+<bash>
+  sudo -s
+  mkdir /mnt/disk1
+  mkdir /mnt/disk2
+  mount /dev/xvdg /mnt/disk1
+  mount /dev/xvdh /mnt/disk2
+</bash>
+ 
+Compare the hashes of volX and volY. 
+First hash file/directory/symlink paths, ownership, permissions, and symlink targets.
+Then hash the contents of all regular files.
+The outputs must match.
+<bash>
+  cd /mnt/disk1
+  find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
+  find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
+
+  cd /mnt/disk2
+  find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
+  find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
+</bash>
+
+
+-------------------------------------------------------------------------------
+FOR VERIFIERS: HOW TO DETERMINE THAT THE RUNNING ORACLE INSTANCE IS LEGIT
+-------------------------------------------------------------------------------
+The published URLs must conform to the checks performed in functions starting with check* in content/oracles.js.
+
+
+-------------------------------------------------------------------------------
+POSSIBLE ATTACKS AND HOW THEY WILL BE MITIGATED
+-------------------------------------------------------------------------------
+(or in other words, what prevents the AWS account owner from modifying the oracle instance code)
+
+
+Attack1.
+Launch the AMI with rogue snapshot on /dev/sda1
+Mitigation:
+AWS doesn't allow replacing the snapshotID on root device.
+
+
+Attack2.
+Launch the AMI with a rogue snapshot on /dev/sda2 hoping that AMI will boot it instead of /dev/sda1.
+Mitgation:
+When creating AMI, we changed the root device to /dev/xvda. We also changed a line in grub's menu.lst to pass root=/dev/xvda1 to kernel. Whereas before the kernel searched for a specific ext2label, now there is no wiggle room for the attacker.
+
+
+Attack3.
+Launch the AMI with /dev/sda1=none and a rogue snapshot on /dev/sda2. The AMI in absence of /dev/sda1 will boot /dev/sda2.
+Attach the oracle snapshotID to /dev/sda1 and modify it. Then detach /dev/sda2 and reboot.
+Upon reboot /dev/sda1 will be chosen by the kernel as the root device.
+Mitigation:
+The attachment time of /dev/sda1 will differ from the time when AMI was started. This is a red flag.
+
+Attack4.
+Launch AMI with user data passed in.
+Mitigation:
+AWS doesn't allow to modify user data while the instance is running, so DescribeInstanceAttribute userData API call will reveal that data was passed.
+On top of that, we removed the bootcmd module from AMI's cloud-init. This module is responsible for handling the user Data.
+

@@ -1,0 +1,31 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+
+#assign a random password for good measure
+echo ubuntu:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
+sudo -u ubuntu openssl genrsa -out /dev/shm/signing_server_private.pem 4096
+sudo -u ubuntu openssl rsa -in /dev/shm/signing_server_private.pem -outform PEM -pubout -out /dev/shm/signing_server_public.pem
+echo "TLSNotary siging server pubkey:"
+cat /dev/shm/signing_server_public.pem
+cp /root/signing_server/signing_server.py /dev/shm/signing_server.py
+chmod 777 /dev/shm/signing_server.py && chown ubuntu:ubuntu /dev/shm/signing_server.py
+
+nohup sh -c 'nc -l -p 10004 > /dev/shm/main_server_public.pem' &
+sleep 20 #we need some time to pass the pubkey until this script runs out
+chmod 777 /dev/shm/main_server_public.pem && chown ubuntu:ubuntu /dev/shm/main_server_public.pem
+echo "TLSNotary imported main server pubkey:"
+cat /dev/shm/main_server_public.pem
+
+sudo -u ubuntu /usr/bin/python2.7 /dev/shm/signing_server.py &
+
+exit 0

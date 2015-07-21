@@ -1,1 +1,1 @@
-from tlsn_ssl import *
+from shared.tlsn_ssl import *

@@ -15,7 +15,7 @@ reliable_sites = {} #format {'github.com': {'expires':'date', 'modulus':data}, '
 
 def import_reliable_sites(d):
     with open(os.path.join(d,'pubkeys.txt'),'rb') as f: raw = f.read()
-    lines = raw.split('\n')
+    lines = raw.decode().split('\n')
     name = ''
     expires = ''
     modulus = ''
@@ -41,11 +41,7 @@ def import_reliable_sites(d):
                 if line == '':
                     break
                 mod_str += line
-            #hexstring into a bytearray
-            modulus = bytearray()
-            for x in mod_str.split():
-                modulus.append(int(x, 16))
-            reliable_sites[name] = {'expires':expires, 'modulus':modulus}
+            reliable_sites[name] = {'expires':expires, 'modulus':bytes.fromhex(mod_str)}
 
 
 
@@ -62,7 +58,7 @@ class MessageProcessor(object):
             rss = shared.TLSNClientSession()
             rss.client_random = msg_data[:32]
             rss.server_random = msg_data[32:64]
-            rs_choice_first5 = msg_data[64:69]
+            rs_choice_first5 = msg_data[64:69].decode()
             rs_choice = [k for k in  reliable_sites.keys() if k.startswith(rs_choice_first5)][0]
             if not rs_choice:
                 raise Exception('Unknown reliable site', rs_choice_first5)
@@ -83,7 +79,7 @@ class MessageProcessor(object):
             self.state = 1
             data = base64.b64decode(b64data)
             assert len(data) == 125
-            self.tlsns.chosen_cipher_suite = int(data[:1].encode('hex'),16)
+            self.tlsns.chosen_cipher_suite = int.from_bytes(data[:1], 'big')
             self.tlsns.client_random = data[1:33]
             self.tlsns.server_random = data[33:65]
             md5_hmac1_for_ms=data[65:89]
@@ -133,7 +129,7 @@ def handler(sock):
         if not raw:
             sock.close()
             return
-        lines = raw.split('\r\n')
+        lines = raw.decode().split('\r\n')
         request = None
         data = None
         uid = None
@@ -154,16 +150,16 @@ def handler(sock):
             sock.close()
             return
         if uid not in mps:
-            mpsLock.acquire(True)				
+            mpsLock.acquire(True)
             mps[uid] = MessageProcessor(uid)
             mpsLock.release()
     
         response, respdata = mps[uid].process_messages(request, data)
-        raw_response = 'HTTP/1.0 200 OK\r\n'+ \
+        raw_response = ('HTTP/1.0 200 OK\r\n'+ \
             'Access-Control-Allow-Origin: *\r\n'+ \
             'Access-Control-Expose-Headers: Response,Data\r\n'+ \
             'Response: '+response+'\r\n'+ \
-            'Data: '+respdata+'\r\n\r\n'
+            'Data: '+respdata.decode()+'\r\n\r\n').encode()
         if request == 'commit_hash':
             mpsLock.acquire(True)		
             del mps[uid]
@@ -179,12 +175,14 @@ def handler(sock):
 def mps_purge():
     global mps
     while True:
-        time.sleep(5)
+        time.sleep(1)
         mpsLock.acquire(True)
         now = int(time.time())
         for k,v in mps.items():
             if (now - v.time_last_seen) > 10:
                 del mps[k]
+                #if after deleting we continue iterating, we'll get the Error: dictionary changed size during iteration
+                break 
         mpsLock.release()
 
 

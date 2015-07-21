@@ -26,6 +26,6 @@ chmod 777 /dev/shm/main_server_public.pem && chown ubuntu:ubuntu /dev/shm/main_s
 echo "TLSNotary imported main server pubkey:"
 cat /dev/shm/main_server_public.pem
 
-sudo -u ubuntu /usr/bin/python2.7 /dev/shm/signing_server.py &
+sudo -u ubuntu /usr/bin/python3 /dev/shm/signing_server.py &
 
 exit 0

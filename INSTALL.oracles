@@ -8,7 +8,7 @@ Optionally you may want to copy all files from the volume to a volume of smaller
 
 From within the instance:	
 <bash>
-  git clone https://github.com/themighty1/taas-poc-1
+  git clone https://github.com/tlsnotary/pagesigner-oracles
   cd taas-poc-1
   sudo -s
   mkdir /mnt/disk

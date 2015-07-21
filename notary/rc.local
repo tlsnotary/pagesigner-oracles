@@ -27,6 +27,6 @@ chown -R ubuntu:ubuntu /dev/shm/notary
 iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --set
 iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --update --seconds 60 --hitcount 15 -j DROP
 
-sudo -u ubuntu python2.7 /dev/shm/notary/notaryserver.py &
+sudo -u ubuntu python3 /dev/shm/notary/notaryserver.py &
 
 exit 0

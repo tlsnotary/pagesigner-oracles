@@ -4,8 +4,8 @@ from hashlib import md5, sha1
 md5_hash_len = 16
 sha1_hash_len = 20
 aes_block_size = 16
-tls_ver_1_0 = '\x03\x01'
-tls_ver_1_1 = '\x03\x02'
+tls_ver_1_0 = b'\x03\x01'
+tls_ver_1_1 = b'\x03\x02'
 tls_versions = [tls_ver_1_0,tls_ver_1_1]
 """The amount of key material for each ciphersuite:
 AES256-CBC-SHA: mac key 20*2, encryption key 32*2, IV 16*2 == 136bytes
@@ -31,15 +31,14 @@ def bi2ba(bigint,fixed=None):
     if fixed:
         padding = fixed - len(m_bytes)
         if padding > 0: m_bytes = [0]*padding + m_bytes
-    return bytearray(m_bytes)
+    return bytes(m_bytes)
 
 def xor(a,b):
-    return bytearray([ord(a) ^ ord(b) for a,b in zip(a,b)])
+    return bytes(a^b for a,b in zip(a,b))
 
 #convert bytearray into int
 def ba2int(byte_array):
-    return int(str(byte_array).encode('hex'), 16)
-
+    return int.from_bytes(byte_array, 'big')
 
 
 
@@ -131,7 +130,7 @@ class TLSNClientSession(object):
             if type(v) == type(str()):
                 return_str += 'string: len:'+str(len(v)) + '\n'
                 return_str += v + '\n'
-            elif type(v) == type(bytearray()):
+            elif type(v) == type(bytes()):
                 return_str += 'bytearray: len:'+str(len(v)) + '\n'
                 return_str += binascii.hexlify(v) + '\n'
             else:
@@ -159,9 +158,9 @@ class TLSNClientSession(object):
         if not self.server_modulus:
             raise TLSNSSLError("Failed to set enc second half pms")
         ones_length = 103+self.server_mod_length-256
-        self.pms2 =  self.auditor_secret + ('\x00' * (24-self.n_auditor_entropy-1)) + '\x01'
+        self.pms2 =  self.auditor_secret + (b'\x00' * (24-self.n_auditor_entropy-1)) + b'\x01'
         self.enc_second_half_pms = bi2ba( pow( 
-            ba2int('\x01'+('\x01'*(ones_length))+self.auditor_padding_secret+ ('\x00'*25)+self.pms2),
+            ba2int(b'\x01'+(b'\x01'*(ones_length))+self.auditor_padding_secret+ (b'\x00'*25)+self.pms2),
             self.server_exponent,
             ba2int(self.server_modulus)))
 
@@ -178,9 +177,9 @@ class TLSNClientSession(object):
             self.auditor_secret = os.urandom(self.n_auditor_entropy)
         if not self.auditor_padding_secret:
             self.auditor_padding_secret =  os.urandom(15)
-        label = 'master secret'
+        label = b'master secret'
         seed = cr + sr
-        self.pms2 =  self.auditor_secret + ('\x00' * (24-self.n_auditor_entropy-1)) + '\x01'
+        self.pms2 =  self.auditor_secret + (b'\x00' * (24-self.n_auditor_entropy-1)) + b'\x01'
         self.p_auditor = tls_10_prf(label+seed,second_half = self.pms2)[1]
         return (self.p_auditor)        
     
@@ -209,7 +208,7 @@ class TLSNClientSession(object):
         '''
         if not (self.server_random and self.client_random and self.chosen_cipher_suite):
             raise TLSNSSLError("server random, client random or cipher suite not set.")
-        label = 'key expansion'
+        label = b'key expansion'
         seed = self.server_random + self.client_random
         expkeys_len = tlsn_cipher_suites[self.chosen_cipher_suite][-1]        
         if ctrprty == 'auditor':
@@ -231,7 +230,7 @@ class TLSNClientSession(object):
     
     def get_verify_hmac(self,sha_verify=None,md5_verify=None,half=1,is_for_client=True):
         '''returns only 12 bytes of hmac'''
-        label = 'client finished' if is_for_client else 'server finished'
+        label = b'client finished' if is_for_client else b'server finished'
         seed = md5_verify + sha_verify
         if half==1:
             return tls_10_prf(label+seed,req_bytes=12,first_half = self.master_secret_half_auditor)[0]
@@ -281,7 +280,7 @@ def tls_10_prf(seed, req_bytes = 48, first_half=None,second_half=None,full_secre
         for i in range(1,int(req_bytes/md5_hash_len)+1):
             A.append(hmac.new(first_half,A[len(A)-1],md5).digest())
 
-        md5_P_hash = ''
+        md5_P_hash = bytes()
         for x in A:
             md5_P_hash += hmac.new(first_half,x+seed,md5).digest()
 
@@ -296,7 +295,7 @@ def tls_10_prf(seed, req_bytes = 48, first_half=None,second_half=None,full_secre
         for i in range(1,int(req_bytes/sha1_hash_len)+1):
             A.append(hmac.new(second_half,A[len(A)-1],sha1).digest())
 
-        sha1_P_hash = ''
+        sha1_P_hash = bytes()
         for x in A:
             sha1_P_hash += hmac.new(second_half,x+seed,sha1).digest()
 

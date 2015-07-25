@@ -125,7 +125,7 @@ def handler(sock):
     global mps
     try:
         sock.settimeout(1)
-        raw = sock.recv(1024)
+        raw = sock.recv(2048)
         if not raw:
             sock.close()
             return

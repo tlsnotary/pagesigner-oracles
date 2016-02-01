@@ -11,22 +11,36 @@
 #
 # By default this script does nothing.
 
+#create two users
+adduser --disabled-password --gecos "" notary
+adduser --disabled-password --gecos "" sigserver
+
 #assign a random password for good measure
 echo ubuntu:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
-sudo -u ubuntu openssl genrsa -out /dev/shm/main_server_private.pem 4096
-sudo -u ubuntu openssl rsa -in /dev/shm/main_server_private.pem -outform PEM -pubout -out /dev/shm/main_server_public.pem
-echo "TLSNotary main server pubkey which is embedded into the signing server:"
-cat /dev/shm/main_server_public.pem
+echo notary:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
+echo sigserver:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
+
+sudo -u sigserver openssl genrsa -out /dev/shm/private.pem 4096
+#private key readable only by sigserver user
+sudo -u sigserver chmod 0400 /dev/shm/private.pem
+sudo -u sigserver openssl rsa -in /dev/shm/private.pem -outform PEM -pubout -out /dev/shm/public.pem
+echo "PageSigner public key for verifying"
+cat /dev/shm/public.pem
 #I got weird permission errors when trying to access files in /home/ubuntu with sudo -u ubuntu
 #That's why I'm copying them to /dev/shm
 cp -R /root/notary /dev/shm
 chmod -R 777 /dev/shm/notary
-chown -R ubuntu:ubuntu /dev/shm/notary
+chown -R notary:notary /dev/shm/notary
+sudo -u notary python3 /dev/shm/notary/notaryserver.py &
+
+cp /root/signing_server/signing_server.py /dev/shm/signing_server.py
+chmod 777 /dev/shm/signing_server.py
+chown sigserver:sigserver /dev/shm/signing_server.py
+sudo -u sigserver /usr/bin/python3 /dev/shm/signing_server.py &
 
 #anti DoS: allow no more than 15 new connections every 60 seconds
 iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --set
 iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --update --seconds 60 --hitcount 15 -j DROP
 
-sudo -u ubuntu python3 /dev/shm/notary/notaryserver.py &
 
 exit 0

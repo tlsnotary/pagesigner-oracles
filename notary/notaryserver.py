@@ -8,8 +8,6 @@ import string
 
 mps = {}
 mpsLock = threading.Lock()
-signing_server_address = None
-
 
 reliable_sites = {} #format {'github.com': {'expires':'date', 'modulus':data}, 'archive.org': {...}   }
 
@@ -105,14 +103,10 @@ class MessageProcessor(object):
             response_hash = commit_hash[:32]
             data_to_be_signed = hashlib.sha256(response_hash + self.tlsns.pms2 + self.tlsns.server_modulus).digest()
 
-            uid = '/dev/shm/' + ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10))
-            with open(uid, 'wb') as f: f.write(data_to_be_signed)
-            mysig = subprocess.check_output(['openssl','rsautl','-sign','-inkey', '/dev/shm/main_server_private.pem' ,'-keyform','PEM', '-in', uid])
-
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            server_address = (signing_server_address, 10003)
+            server_address = ('127.0.0.1', 10003)
             sock.connect(server_address)
-            sock.send(data_to_be_signed+mysig)
+            sock.send(data_to_be_signed)
             signing_server_sig = sock.recv(512)
             sock.close()
             return 'pms2', base64.b64encode(self.tlsns.pms2+signing_server_sig)
@@ -198,10 +192,6 @@ if __name__ == "__main__":
     server_address = ('0.0.0.0', 10011)
     sock.bind(server_address)
     sock.listen(100) #as many as possible
-    #the very first data that we get is signing server's DNS
-    connection, client_address = sock.accept()
-    signing_server_address = connection.recv(128)
-    connection.close()
     while True:
         try:
             connection, client_address = sock.accept()

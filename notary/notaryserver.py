@@ -101,7 +101,8 @@ class MessageProcessor(object):
         elif request == 'commit_hash' and self.state == 2:
             commit_hash = base64.b64decode(b64data)
             response_hash = commit_hash[:32]
-            data_to_be_signed = hashlib.sha256(response_hash + self.tlsns.pms2 + self.tlsns.server_modulus).digest()
+            time_bytes = int(time.time()).to_bytes(4, byteorder='big')
+            data_to_be_signed = hashlib.sha256(response_hash + self.tlsns.pms2 + self.tlsns.server_modulus + time_bytes).digest()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_address = ('127.0.0.1', 10003)
@@ -109,7 +110,7 @@ class MessageProcessor(object):
             sock.send(data_to_be_signed)
             signing_server_sig = sock.recv(512)
             sock.close()
-            return 'pms2', base64.b64encode(self.tlsns.pms2+signing_server_sig)
+            return 'pms2', base64.b64encode(self.tlsns.pms2+signing_server_sig+time_bytes)
         else:
             raise Exception("invalid request process_messages")
 

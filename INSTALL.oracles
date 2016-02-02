@@ -1,22 +1,22 @@
 -------------------------------------------------------------------------------
 HOW TO CREATE A TLSNOTARY ORACLE EBS SNAPSHOT.
 -------------------------------------------------------------------------------
-Change to Asia Pacific Singapore region.
-Create a volume from snap-3eb0e00a (this is the snapshot used by Ubuntu Server 14.04 LTS (PV), SSD Volume Type - ami-e8f1c1ba).
+In N.Virginia region create a volume from snap-018e361a (this is the snapshot used by Ubuntu Server 14.04 LTS (PV), ami-b2e3c6d8).
 Attach the volume to any running instance as e.g. /dev/sdf.
 Optionally you may want to copy all files from the volume to a volume of smaller size (otherwise the resulting snapshot will be the default 8GB).
 
 From within the instance:	
 <bash>
+  sudo -s
+  apt-get -y install git
   git clone https://github.com/tlsnotary/pagesigner-oracles
   cd pagesigner-oracles
-  sudo -s
   mkdir /mnt/disk
   mount /dev/xvdf /mnt/disk
   DISK=/mnt/disk
   rm $DISK/etc/init.d/ssh
   rm $DISK/usr/sbin/sshd
-  sed -i '136s/.*/ kernel          \/boot\/vmlinuz-3.13.0-48-generic root=\/dev\/xvda ro console=hvc0/' $DISK/boot/grub/menu.lst
+  sed -i '136s/.*/ kernel          \/boot\/vmlinuz-3.13.0-74-generic root=\/dev\/xvda ro console=hvc0/' $DISK/boot/grub/menu.lst
   sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- runcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- rightscale_userdata//' $DISK/etc/cloud/cloud.cfg
@@ -25,15 +25,15 @@ From within the instance:
   cp notary/rc.local $DISK/etc/rc.local
   chmod 755 $DISK/etc/rc.local && chown root:root $DISK/etc/rc.local
   cp -R signing_server $DISK/root
+  umount /dev/xvdf
 </bash>
-	
-	
-"umount /dev/xvdf" and detach it in the AWS console.
-Create a public snapshot from the volume and note the snapshot ID.
-
-Create an AMI from the snapshot, making sure that:
+		
+In AWS console: 
+Detach the volume,
+Create a public snapshot,
+Create an Image from the snapshot, making sure that:
 Virtualization type is Paravirtual
-Kernel ID is aki-503e7402
+Kernel ID is aki-499ccb20 (pv-grub-hd00_1.04-x86_64.gz)
 Root device name is /dev/xvda
 Note the AMI ID and make the AMI public.
 
@@ -46,17 +46,18 @@ Launch the AMI you created from AWS management console. Choose "Proceed without 
 Make sure that:
   Instance's "launchTime" and volume's "attachTime" happened on the same minute with no more than 3 seconds between the events.
   Console Output (right-click an instance ->Instance Settings -> Get System Log) is available, since it was observed that sometimes instance doesn't have any.
-  
-After the main server AMI started, copy main server pubkey from Console Log into pubkey.pem
-Start the signing server with TCP port 10004 open and send it pubkey.pem: cat pubkey.pem | nc sigserverIP 10004
-Make sure you hit the 20 sec window when the signing server is listening on that port, otherwise you'll get TCP RST.
-Feed the sig server IP to main server: echo -n '1.2.3.4' | nc mainserverIP 10011
 
+Internal use only:
+in order to tranform the pubkey from Console Output into an array of numbers for PageSigner:
+openssl rsa -pubin -inform PEM -text -noout < pubkey.pem 
+intstr = ''
+for h in ''.join(raw.split()).split(':')[1:]:
+    intstr += str(int(h,16))+','
+  
 
 -------------------------------------------------------------------------------
 HOW CAN YOU PROVE TO THE WORLD THAT A CERTAIN IP ADDRESS IS RUNNING THE ORACLE INSTANCE
 -------------------------------------------------------------------------------
-
 Use aws_query.py to create and publish URLs for requests 
 DescribeInstances
 DescribeInstanceAttribute
@@ -68,8 +69,6 @@ GetConsoleOutput
 -------------------------------------------------------------------------------
 FOR VERIFIERS: HOW TO CHECK THAT THE SNAPSHOT CONTENTS WAS NOT MALICIOUSLY MODIFIED.
 -------------------------------------------------------------------------------
-
-
 Repeat all the steps described in "HOW TO CREATE AN ORACLE EBS SNAPSHOT" but don't create a public snapshot.
 Attach the resulting volume (volX) to a running instance as /dev/sdg
 Create a volume from the snapshot (volY) you are verifying and attach it to /dev/sdh
@@ -110,13 +109,13 @@ POSSIBLE ATTACKS AND HOW THEY WILL BE MITIGATED
 
 
 Attack1.
-Launch the AMI with rogue snapshot on /dev/sda1
+Launch the AMI with a rogue snapshot on /dev/sda1
 Mitigation:
-AWS doesn't allow replacing the snapshotID on root device.
+AWS doesn't allow replacing the snapshotID on the root device.
 
 
 Attack2.
-Launch the AMI with a rogue snapshot on /dev/sda2 hoping that AMI will boot it instead of /dev/sda1.
+Launch the AMI with a rogue snapshot on /dev/sda2 hoping that the AMI will boot it instead of /dev/sda1.
 Mitgation:
 When creating AMI, we changed the root device to /dev/xvda. We also changed a line in grub's menu.lst to pass root=/dev/xvda1 to kernel. Whereas before the kernel searched for a specific ext2label, now there is no wiggle room for the attacker.
 

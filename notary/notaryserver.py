@@ -174,7 +174,7 @@ def mps_purge():
         mpsLock.acquire(True)
         now = int(time.time())
         for k,v in mps.items():
-            if (now - v.time_last_seen) > 10:
+            if (now - v.time_last_seen) > 30:
                 del mps[k]
                 #if after deleting we continue iterating, we'll get the Error: dictionary changed size during iteration
                 break 

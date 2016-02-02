@@ -197,5 +197,6 @@ if __name__ == "__main__":
         try:
             connection, client_address = sock.accept()
             threading.Thread(target=handler, args=(connection,)).start()
-        except:
+        except Exception as e:
+            print('Exception in notaryserver.py', e)
             pass

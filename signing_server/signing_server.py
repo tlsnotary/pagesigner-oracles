@@ -31,6 +31,7 @@ if __name__ == "__main__":
       openssl_path = arg.split('=')[1]
       
   sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
   server_address = ('127.0.0.1', 10003)
   sock.bind(server_address)
   sock.listen(100) #as many as possible

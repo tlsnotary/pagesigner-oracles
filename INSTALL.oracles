@@ -1,22 +1,22 @@
 -------------------------------------------------------------------------------
 HOW TO CREATE A TLSNOTARY ORACLE EBS SNAPSHOT.
 -------------------------------------------------------------------------------
-In N.Virginia region create a volume from snap-018e361a (this is the snapshot used by Ubuntu Server 14.04 LTS (PV), ami-b2e3c6d8).
+In N.Virginia region create a volume from snap-f70deff0 (used by Ubuntu Server 14.04 LTS ami-fce3c696).
 Attach the volume to any running instance as e.g. /dev/sdf.
-Optionally you may want to copy all files from the volume to a volume of smaller size (otherwise the resulting snapshot will be the default 8GB).
 
 From within the instance:	
 <bash>
   sudo -s
   apt-get -y install git
+  
   git clone https://github.com/tlsnotary/pagesigner-oracles
   cd pagesigner-oracles
   mkdir /mnt/disk
-  mount /dev/xvdf /mnt/disk
+  mount /dev/xvdf1 /mnt/disk
   DISK=/mnt/disk
   rm $DISK/etc/init.d/ssh
   rm $DISK/usr/sbin/sshd
-  sed -i '136s/.*/ kernel          \/boot\/vmlinuz-3.13.0-74-generic root=\/dev\/xvda ro console=hvc0/' $DISK/boot/grub/menu.lst
+  sed -i '122s/.*/linux \/boot\/vmlinuz-3.13.0-74-generic root=\/dev\/xvda1 ro console=tty1 console=ttyS0/' $DISK/boot/grub/grub.cfg
   sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- runcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- rightscale_userdata//' $DISK/etc/cloud/cloud.cfg
@@ -25,15 +25,14 @@ From within the instance:
   cp notary/rc.local $DISK/etc/rc.local
   chmod 755 $DISK/etc/rc.local && chown root:root $DISK/etc/rc.local
   cp -R signing_server $DISK/root
-  umount /dev/xvdf
+  umount /dev/xvdf1
 </bash>
 		
 In AWS console: 
 Detach the volume,
 Create a public snapshot,
 Create an Image from the snapshot, making sure that:
-Virtualization type is Paravirtual
-Kernel ID is aki-499ccb20 (pv-grub-hd00_1.04-x86_64.gz)
+Virtualization type is Hardware-assisted virtualization
 Root device name is /dev/xvda
 Note the AMI ID and make the AMI public.
 
@@ -45,7 +44,7 @@ Launch the AMI you created from AWS management console. Choose "Proceed without 
 
 Make sure that:
   Instance's "launchTime" and volume's "attachTime" happened on the same minute with no more than 3 seconds between the events.
-  Console Output (right-click an instance ->Instance Settings -> Get System Log) is available, since it was observed that sometimes instance doesn't have any.
+  Console Output (right-click an instance ->Instance Settings -> Get System Log) is available (after ~5 mins), since it was observed that sometimes an instance may not have any.
 
 Internal use only:
 in order to tranform the pubkey from Console Output into an array of numbers for PageSigner:
@@ -77,22 +76,29 @@ After that, run from within the instance
   sudo -s
   mkdir /mnt/disk1
   mkdir /mnt/disk2
-  mount /dev/xvdg /mnt/disk1
-  mount /dev/xvdh /mnt/disk2
+  mount /dev/xvdg1 /mnt/disk1
+  mount /dev/xvdh1 /mnt/disk2
 </bash>
  
 Compare the hashes of volX and volY. 
 First hash file/directory/symlink paths, ownership, permissions, and symlink targets.
 Then hash the contents of all regular files.
 The outputs must match.
+
+Also make sure that MBR and boot sector raw disk data match up to the point where filesystem starts.
+Note: we do not check ext4 filesystem headers because they are not deterministic.
+fdisk -l /dev/xvdg should show you that you only have 1 partition which starts at sector 16065
+
 <bash>
   cd /mnt/disk1
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
+  dd if=/dev/xvdg ibs=512 count=16066 | sha256sum
 
   cd /mnt/disk2
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
+  dd if=/dev/xvdh ibs=512 count=16066 | sha256sum
 </bash>
 
 
@@ -108,28 +114,40 @@ POSSIBLE ATTACKS AND HOW THEY WILL BE MITIGATED
 (or in other words, what prevents the AWS account owner from modifying the oracle instance code)
 
 
-Attack1.
-Launch the AMI with a rogue snapshot on /dev/sda1
-Mitigation:
+    Attack1.
+Launch the AMI with a rogue snapshot on /dev/xvda
+    Mitigation:
 AWS doesn't allow replacing the snapshotID on the root device.
+    Testing:
+ec2-run-instances -O id -W key ami-12345678 -b /dev/xvda=snap-12345678:::: -t t2.micro
+    Returns:
+Client.InvalidBlockDeviceMapping: snapshotId cannot be modified on root device
 
 
-Attack2.
-Launch the AMI with a rogue snapshot on /dev/sda2 hoping that the AMI will boot it instead of /dev/sda1.
-Mitgation:
-When creating AMI, we changed the root device to /dev/xvda. We also changed a line in grub's menu.lst to pass root=/dev/xvda1 to kernel. Whereas before the kernel searched for a specific ext2label, now there is no wiggle room for the attacker.
+    Attack2.
+Launch the AMI with a rogue snapshot on /dev/xvdb hoping that the AMI will boot it instead of /dev/xvda
+    Mitgation:
+In grub.cfg we changed to root=/dev/xvda1.
+    Testing:
+ec2-run-instances -O id -W key ami-12345678 -b /dev/xvdb=snap-12345678:::: -t t2.micro
+After a few minuted check in the System Log that xvda volume was booted.
 
 
-Attack3.
-Launch the AMI with /dev/sda1=none and a rogue snapshot on /dev/sda2. The AMI in absence of /dev/sda1 will boot /dev/sda2.
-Attach the oracle snapshotID to /dev/sda1 and modify it. Then detach /dev/sda2 and reboot.
-Upon reboot /dev/sda1 will be chosen by the kernel as the root device.
-Mitigation:
-The attachment time of /dev/sda1 will differ from the time when AMI was started. This is a red flag.
+    Attack3.
+Launch the AMI with /dev/xvda=none and a rogue snapshot on /dev/xvdb. The AMI in absence of xvda will boot xvdb.
+Attach the oracle snapshot as xvda and modify it. Then reboot and detach xvdb.
+Upon reboot the modified xvda will be chosen by the kernel as the root device.
+    Mitigation:
+AWS will not allow attaching a volume to /dev/xvda. Even if it did, the attachment time of xvda would differ from the time when AMI was launched.
+    Testing:
+ec2-run-instances -O id -W key ami-12345678 -b /dev/xvda=none -b /dev/xvdb=snap-12345678:::: -t t2.micro
+ec2-attach-volume -O id -W key vol-1234567 -i i-12345678 -d /dev/xvda
+    Returns:
+Client.InvalidParameterValue: Invalid value '/dev/xvda' for unixDevice. Attachment point /dev/xvda is already in use
 
-Attack4.
+
+    Attack4.
 Launch AMI with user data passed in.
-Mitigation:
-AWS doesn't allow to modify user data while the instance is running, so DescribeInstanceAttribute userData API call will reveal that data was passed.
+    Mitigation:
+AWS doesn't allow to modify user data while the instance is running, so DescribeInstanceAttribute userData API call will reveal that data was passed in at launch.
 On top of that, we removed the bootcmd module from AMI's cloud-init. This module is responsible for handling the user Data.
-

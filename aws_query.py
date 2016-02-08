@@ -6,12 +6,13 @@ import urllib
 
 if len(sys.argv) != 5:
     print ('Output HTTPS GET links to be used to check the oracle status')
-    print ('The default availability zone is ec2.ap-southeast-1.amazonaws.com')
+    print ('The default availability zone is ec2.us-east-1.amazonaws.com')
     print ('Usage: instance-id volume-id AWS-ID AWS-secret')
     print ('Where instance-id is the oracle instance and volume-id is the volume attached to it')
     exit(0)
 
-common_args = [('Expires=2018-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
+common_args = [('Expires=2019-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
+availability_zone = 'ec2.us-east-1.amazonaws.com'
 instance_id = sys.argv[1]
 volume_id = sys.argv[2]
 key = sys.argv[3]
@@ -37,7 +38,7 @@ args.append('Action=DescribeInstances')
 args.append('InstanceId='+instance_id)
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
-makeurl(args, 'ec2.ap-southeast-1.amazonaws.com')
+makeurl(args, availability_zone)
 
 args = []
 args.extend(common_args)
@@ -45,7 +46,7 @@ args.append('Action=DescribeVolumes')
 args.append('VolumeId='+volume_id)
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
-makeurl(args, 'ec2.ap-southeast-1.amazonaws.com')
+makeurl(args, availability_zone)
 
 args = []
 args.extend(common_args)
@@ -53,7 +54,7 @@ args.append('Action=GetConsoleOutput')
 args.append('InstanceId='+instance_id)
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
-makeurl(args, 'ec2.ap-southeast-1.amazonaws.com')
+makeurl(args, availability_zone)
 
 args = []
 args.extend(common_args)
@@ -69,4 +70,4 @@ args.append('InstanceId='+instance_id)
 args.append('Attribute=userData')
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
-makeurl(args, 'ec2.ap-southeast-1.amazonaws.com')
+makeurl(args, availability_zone)

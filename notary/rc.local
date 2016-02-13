@@ -11,6 +11,13 @@
 #
 # By default this script does nothing.
 
+#add ~1GB swapfile
+dd if=/dev/zero of=/swapfile bs=1024 count=1000000
+chown root:root /swapfile
+chmod 0600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+
 #create two users
 adduser --disabled-password --gecos "" notary
 adduser --disabled-password --gecos "" sigserver

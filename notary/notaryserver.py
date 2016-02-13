@@ -44,8 +44,8 @@ def import_reliable_sites(d):
 
 
 class MessageProcessor(object):
-    def __init__(self, id):
-        self.id = id
+    def __init__(self):
+        self.id = None
         self.tlsns = shared.TLSNClientSession()
         self.state = 0
         self.time_last_seen = int(time.time())
@@ -145,8 +145,10 @@ def handler(sock):
             sock.close()
             return
         if uid not in mps:
+            mp = MessageProcessor()
+            mp.id = uid
             mpsLock.acquire(True)
-            mps[uid] = MessageProcessor(uid)
+            mps[uid] = mp
             mpsLock.release()
     
         response, respdata = mps[uid].process_messages(request, data)
@@ -155,10 +157,6 @@ def handler(sock):
             'Access-Control-Expose-Headers: Response,Data\r\n'+ \
             'Response: '+response+'\r\n'+ \
             'Data: '+respdata.decode()+'\r\n\r\n').encode()
-        if request == 'commit_hash':
-            mpsLock.acquire(True)		
-            del mps[uid]
-            mpsLock.release()
 
         sock.send(raw_response)
         sock.close()

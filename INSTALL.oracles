@@ -74,6 +74,9 @@ Create a volume from the snapshot (volY) you are verifying and attach it to /dev
 After that, run from within the instance
 <bash>
   sudo -s
+  fsck /dev/xvdg1
+  fsck /dev/xvdh1
+  #fsck must show that there were no errors
   mkdir /mnt/disk1
   mkdir /mnt/disk2
   mount /dev/xvdg1 /mnt/disk1

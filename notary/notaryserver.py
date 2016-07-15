@@ -117,13 +117,13 @@ class MessageProcessor(object):
 
 def handler(sock):
 #only process one request and close the socket
-    print('Handling a new connection')
+    print('Handling a new connection', sock)
     global mps
     try:
         sock.settimeout(1)
         raw = sock.recv(2048)
         if not raw:
-            print('No data received')
+            print('No data received', sock)
             sock.close()
             return
         lines = raw.decode().split('\r\n')
@@ -141,11 +141,11 @@ def handler(sock):
                 uid = x[len('UID: '):]
                 continue
         if (not request or not data or not uid):
-            print('One of the headers missing')
+            print('One of the headers missing', sock)
             sock.close()
             return
         if len(uid) != 10:
-            print('UID length incorrect')
+            print('UID length incorrect', sock)
             sock.close()
             return
         if uid not in mps:
@@ -164,10 +164,10 @@ def handler(sock):
             'Data: '+respdata.decode()+'\r\n\r\n').encode()
 
         sock.send(raw_response)
-        print('Sent response')
+        print('Sent response', sock)
         sock.close()
     except Exception as e: #e.g. base64 decode exception
-        print('Exception while handling connection', e)
+        print('Exception while handling connection', sock, e)
         sock.close()
 
 

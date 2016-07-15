@@ -20,6 +20,7 @@ swapon /swapfile
 
 #create two users
 adduser --disabled-password --gecos "" notary
+usermod -a -G tty notary #allow notaryserver.py to print to tty
 adduser --disabled-password --gecos "" sigserver
 
 #assign a random password for good measure

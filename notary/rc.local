@@ -46,7 +46,7 @@ chmod 777 /dev/shm/signing_server.py
 chown sigserver:sigserver /dev/shm/signing_server.py
 sudo -u sigserver /usr/bin/python3 /dev/shm/signing_server.py &
 
-#anti DoS: allow no more than 15 new connections every 60 seconds
+#anti DoS: allow no more than 20 new connections every 40 seconds
 iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --set
 #xt_recent cant do more than 20 by default
 iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --update --seconds 40 --hitcount 20 -j DROP

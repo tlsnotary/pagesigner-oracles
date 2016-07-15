@@ -117,13 +117,13 @@ class MessageProcessor(object):
 
 def handler(sock):
 #only process one request and close the socket
-    print('Handling a new connection', sock)
+    print('Handling a new connection', sock.fileno())
     global mps
     try:
         sock.settimeout(1)
         raw = sock.recv(2048)
         if not raw:
-            print('No data received', sock)
+            print('No data received', sock.fileno())
             sock.close()
             return
         lines = raw.decode().split('\r\n')
@@ -141,13 +141,14 @@ def handler(sock):
                 uid = x[len('UID: '):]
                 continue
         if (not request or not data or not uid):
-            print('One of the headers missing', sock)
+            print('One of the headers missing', sock.fileno())
             sock.close()
             return
         if len(uid) != 10:
-            print('UID length incorrect', sock)
+            print('UID length incorrect', sock.fileno())
             sock.close()
             return
+        print('Processing message', request, sock.fileno())
         if uid not in mps:
             mp = MessageProcessor()
             mp.id = uid
@@ -155,7 +156,6 @@ def handler(sock):
             mps[uid] = mp
             mpsLock.release()
     
-        print('Processing message')
         response, respdata = mps[uid].process_messages(request, data)
         raw_response = ('HTTP/1.0 200 OK\r\n'+ \
             'Access-Control-Allow-Origin: *\r\n'+ \
@@ -164,10 +164,10 @@ def handler(sock):
             'Data: '+respdata.decode()+'\r\n\r\n').encode()
 
         sock.send(raw_response)
-        print('Sent response', sock)
+        print('Sent response', response, sock.fileno())
         sock.close()
     except Exception as e: #e.g. base64 decode exception
-        print('Exception while handling connection', sock, e)
+        print('Exception while handling connection', sock.fileno(), e)
         sock.close()
 
 
@@ -208,7 +208,7 @@ if __name__ == "__main__":
         try:
             print('Waiting for a new connection')
             connection, client_address = sock.accept()
-            print('Connection accepted')
+            print('Connection accepted', connection.fileno())
             threading.Thread(target=handler, args=(connection,)).start()
         except Exception as e:
             print('Exception in notaryserver.py', e)

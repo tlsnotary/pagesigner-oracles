@@ -167,7 +167,7 @@ def handler(sock):
         print('Sent response', response, sock.fileno())
         sock.close()
     except Exception as e: #e.g. base64 decode exception
-        print('Exception while handling connection', sock.fileno(), e)
+        print('Exception while handling connection', sock.fileno(), e, raw)
         sock.close()
 
 

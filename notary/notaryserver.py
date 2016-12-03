@@ -121,7 +121,7 @@ def handler(sock):
     global mps
     raw = None
     try:
-        sock.settimeout(1)
+        sock.settimeout(5)
         raw = sock.recv(2048)
         if not raw:
             print('No data received', sock.fileno())

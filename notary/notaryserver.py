@@ -119,6 +119,7 @@ def handler(sock):
 #only process one request and close the socket
     print('Handling a new connection', sock.fileno())
     global mps
+    raw = None
     try:
         sock.settimeout(1)
         raw = sock.recv(2048)

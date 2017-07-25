@@ -2,7 +2,7 @@ import sys
 import hmac
 import base64
 import hashlib
-import urllib 
+from urllib import parse
 
 if len(sys.argv) != 5:
     print ('Output HTTPS GET links to be used to check the oracle status')
@@ -22,11 +22,12 @@ def makeurl(args, endpoint, abbr):
     args.sort()
     argstr = ''
     for arg in args:
-        argstr += urllib.quote_plus(arg, '=')+'&'
+        argstr += parse.quote_plus(arg, '=')+'&'
     argstr = argstr[:-1]
-    mhmac = hmac.new(secret, ('GET\n'+endpoint+'\n/\n'+argstr).encode('utf-8'),hashlib.sha256)
+    secret_bytes = bytes(secret , 'latin-1')
+    mhmac = hmac.new(secret_bytes, ('GET\n'+endpoint+'\n/\n'+argstr).encode('utf-8'),hashlib.sha256)
     base64str = base64.b64encode(mhmac.digest()).strip().decode('utf-8')
-    urlenc_sig = urllib.quote_plus(base64str)
+    urlenc_sig = parse.quote_plus(base64str)
     final_string='https://'+endpoint+'/?'+argstr+'&Signature='+urlenc_sig
     print ("'" + abbr + "':'" + final_string + "',")
 

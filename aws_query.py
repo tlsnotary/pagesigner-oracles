@@ -11,7 +11,7 @@ if len(sys.argv) != 5:
     print ('Where instance-id is the oracle instance and volume-id is the volume attached to it')
     exit(0)
 
-common_args = [('Expires=2019-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
+common_args = [('Expires=2025-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
 availability_zone = 'ec2.us-east-1.amazonaws.com'
 instance_id = sys.argv[1]
 volume_id = sys.argv[2]

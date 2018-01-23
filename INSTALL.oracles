@@ -1,7 +1,7 @@
 -------------------------------------------------------------------------------
 HOW TO CREATE A TLSNOTARY ORACLE EBS SNAPSHOT.
 -------------------------------------------------------------------------------
-In N.Virginia region create a volume from snap-f70deff0 (used by Ubuntu Server 14.04 LTS ami-fce3c696).
+In N.Virginia region create a volume from snap-0f9367939aa79509e (used by Ubuntu Server 16.04 LTS ami-41e0b93b).
 Attach the volume to any running instance as e.g. /dev/sdf.
 
 From within the instance:	
@@ -16,7 +16,7 @@ From within the instance:
   DISK=/mnt/disk
   rm $DISK/etc/init.d/ssh
   rm $DISK/usr/sbin/sshd
-  sed -i '122s/.*/linux \/boot\/vmlinuz-3.13.0-74-generic root=\/dev\/xvda1 ro console=tty1 console=ttyS0/' $DISK/boot/grub/grub.cfg
+  sed -i '123s/.*/linux \/boot\/vmlinuz-4.4.0-1047-aws root=\/dev\/xvda1 ro console=tty1 console=ttyS0 nvme.io_timeout=4294967295/' $DISK/boot/grub/grub.cfg
   sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- runcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- rightscale_userdata//' $DISK/etc/cloud/cloud.cfg
@@ -90,18 +90,18 @@ The outputs must match.
 
 Also make sure that MBR and boot sector raw disk data match up to the point where filesystem starts.
 Note: we do not check ext4 filesystem headers because they are not deterministic.
-fdisk -l /dev/xvdg should show you that you only have 1 partition which starts at sector 16065
+fdisk -l /dev/xvdg should show you that you only have 1 partition which starts at sector 2048
 
 <bash>
   cd /mnt/disk1
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
-  dd if=/dev/xvdg ibs=512 count=16066 | sha256sum
+  dd if=/dev/xvdg ibs=512 count=2049 | sha256sum
 
   cd /mnt/disk2
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
-  dd if=/dev/xvdh ibs=512 count=16066 | sha256sum
+  dd if=/dev/xvdh ibs=512 count=2049 | sha256sum
 </bash>
 
 
@@ -154,3 +154,12 @@ Launch AMI with user data passed in.
     Mitigation:
 AWS doesn't allow to modify user data while the instance is running, so DescribeInstanceAttribute userData API call will reveal that data was passed in at launch.
 On top of that, we removed the bootcmd module from AMI's cloud-init. This module is responsible for handling the user Data.
+    Testing:
+    //FIXME --user-data doesnt work, instead use Management Console to launch the instance and pass user data
+    Run stock AMI with user data passed in
+ec2-run-instances -O id -W key ami-fce3c696 -t t2.nano --user-data '!#/bin/bash echo "HELLO FROM USER DATA"'
+    Open Instance's System Log and ascertain that the string is visible.
+    
+    Run oracle AMI with user data passed in
+ec2-run-instances -O id -W key ami-15192302 -t t2.nano --user-data '!#/bin/bash echo "HELLO FROM USER DATA"'
+    The user data MUST NOT be visible in System Log.

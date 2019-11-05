@@ -205,11 +205,13 @@ if __name__ == "__main__":
     server_address = ('0.0.0.0', 10011)
     sock.bind(server_address)
     sock.listen(100) #as many as possible
+    connection_number = 0
     while True:
         try:
             print('Waiting for a new connection')
             connection, client_address = sock.accept()
-            print('Connection accepted', connection.fileno())
+            connection_number += 1
+            print('Connection accepted', connection_number)
             threading.Thread(target=handler, args=(connection,)).start()
         except Exception as e:
             print('Exception in notaryserver.py', e)

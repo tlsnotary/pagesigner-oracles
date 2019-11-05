@@ -1,0 +1,12 @@
+[Unit]
+ Description=TLSNotary signing server
+ ConditionPathExists=/root/systemd/tlsnotary_signingserver.sh
+ After=tlsnotary_setup.service
+ Requires=tlsnotary_setup.service
+
+[Service]
+ ExecStart=/usr/bin/python3 /dev/shm/signing_server.py
+ User=sigserver
+
+[Install]
+ WantedBy=multi-user.target

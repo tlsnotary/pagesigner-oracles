@@ -1,13 +1,12 @@
 -------------------------------------------------------------------------------
 HOW TO CREATE A TLSNOTARY ORACLE EBS SNAPSHOT.
 -------------------------------------------------------------------------------
-In N.Virginia region create a volume from snap-f70deff0 (used by Ubuntu Server 14.04 LTS ami-fce3c696).
+In N.Virginia region create a volume from snap-02e105f83f77cd927 (used by Ubuntu Server 18.04 LTS ami-04b9e92b5572fa0d1).
 Attach the volume to any running instance as e.g. /dev/sdf.
 
 From within the instance:	
 <bash>
   sudo -s
-  apt-get -y install git
   
   git clone https://github.com/tlsnotary/pagesigner-oracles
   cd pagesigner-oracles
@@ -16,14 +15,32 @@ From within the instance:
   DISK=/mnt/disk
   rm $DISK/etc/init.d/ssh
   rm $DISK/usr/sbin/sshd
-  sed -i '122s/.*/linux \/boot\/vmlinuz-3.13.0-74-generic root=\/dev\/xvda1 ro console=tty1 console=ttyS0/' $DISK/boot/grub/grub.cfg  sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
+
+  #replace root device from root=LABEL=cloudimg-rootfs to root=/dev/xvda1
+  sed -i 's/root=LABEL=cloudimg-rootfs/root=\/dev\/xvda1/' $DISK/boot/grub/grub.cfg 
+  #disable cloudinit modules through which user data can potentially be passed to the instance
+  sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- runcmd//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- rightscale_userdata//' $DISK/etc/cloud/cloud.cfg
   sed -i 's/- scripts-user//' $DISK/etc/cloud/cloud.cfg
+  sed -i 's/- ssh//' $DISK/etc/cloud/cloud.cfg
+
+
   cp -R notary $DISK/root
-  cp notary/rc.local $DISK/etc/rc.local
-  chmod 755 $DISK/etc/rc.local && chown root:root $DISK/etc/rc.local
   cp -R signing_server $DISK/root
+  cp -R systemd $DISK/root
+  
+  cp systemd/tlsnotary_setup.service $DISK/etc/systemd/system/tlsnotary_setup.service
+  cp systemd/tlsnotary_notaryserver.service $DISK/etc/systemd/system/tlsnotary_notaryserver.service
+  cp systemd/tlsnotary_signingserver.service $DISK/etc/systemd/system/tlsnotary_signingserver.service
+  #make services start on boot
+  ln -s $DISK/etc/systemd/system/tlsnotary_setup.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_setup.service
+  ln -s $DISK/etc/systemd/system/tlsnotary_notaryserver.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_notaryserver.service  
+  ln -s $DISK/etc/systemd/system/tlsnotary_signingserver.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_signingserver.service
+  chmod +x $DISK/root/systemd/tlsnotary_setup.sh
+  chmod +x $DISK/root/systemd/tlsnotary_notaryserver.sh
+  chmod +x $DISK/root/systemd/tlsnotary_signingserver.sh
+
   umount /dev/xvdf1
 </bash>
 		
@@ -47,10 +64,13 @@ Make sure that:
 
 Internal use only:
 in order to tranform the pubkey from Console Output into an array of numbers for PageSigner:
-openssl rsa -pubin -inform PEM -text -noout < pubkey.pem 
+
+openssl rsa -pubin -inform PEM -text -noout < pubkey.pem
+#copy-paste the number lines into python console like this: raw="""(Ctrl+V)"""
 intstr = ''
 for h in ''.join(raw.split()).split(':')[1:]:
     intstr += str(int(h,16))+','
+#intstr now contains the string to be pasted into oracles.js (sans the last comma)
   
 
 -------------------------------------------------------------------------------
@@ -89,18 +109,18 @@ The outputs must match.
 
 Also make sure that MBR and boot sector raw disk data match up to the point where filesystem starts.
 Note: we do not check ext4 filesystem headers because they are not deterministic.
-fdisk -l /dev/xvdg should show you that you only have 1 partition which starts at sector 16065
+fdisk -l /dev/xvdg should show you that you only have 1 partition which starts at sector 2048
 
 <bash>
   cd /mnt/disk1
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
-  dd if=/dev/xvdg ibs=512 count=16066 | sha256sum
+  dd if=/dev/xvdg ibs=512 count=2048 | sha256sum
 
   cd /mnt/disk2
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
-  dd if=/dev/xvdh ibs=512 count=16066 | sha256sum
+  dd if=/dev/xvdh ibs=512 count=2048 | sha256sum
 </bash>
 
 
@@ -121,7 +141,7 @@ Launch the AMI with a rogue snapshot on /dev/xvda
     Mitigation:
 AWS doesn't allow replacing the snapshotID on the root device.
     Testing:
-ec2-run-instances -O id -W key ami-12345678 -b /dev/xvda=snap-12345678:::: -t t2.micro
+  ec2-run-instances -O id -W key ami-12345678 -b /dev/xvda=snap-12345678:::: -t t2.micro
     Returns:
 Client.InvalidBlockDeviceMapping: snapshotId cannot be modified on root device
 
@@ -136,7 +156,7 @@ After a few minuted check in the System Log that xvda volume was booted.
 
 
     Attack3.
-Launch the AMI with /dev/xvda=none and a rogue snapshot on /dev/xvdb. The AMI in absence of xvda will boot xvdb.
+Launch the AMI with /dev/xvda=none and a rogue snapshot on /dev/xvdb. After that the AMI in the absence of xvda will boot xvdb.
 Attach the oracle snapshot as xvda and modify it. Then reboot and detach xvdb.
 Upon reboot the modified xvda will be chosen by the kernel as the root device.
     Mitigation:

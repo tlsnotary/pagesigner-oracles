@@ -1,0 +1,12 @@
+[Unit]
+ Description=TLSNotary setup
+ ConditionPathExists=/root/systemd/tlsnotary_setup.sh
+
+[Service]
+ Type=oneshot
+ ExecStart=/root/systemd/tlsnotary_setup.sh
+ TimeoutSec=0
+ StandardOutput=journal+console
+
+[Install]
+ WantedBy=multi-user.target

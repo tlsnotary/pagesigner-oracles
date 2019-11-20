@@ -38,8 +38,6 @@ From within the instance:
   ln -s $DISK/etc/systemd/system/tlsnotary_notaryserver.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_notaryserver.service  
   ln -s $DISK/etc/systemd/system/tlsnotary_signingserver.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_signingserver.service
   chmod +x $DISK/root/systemd/tlsnotary_setup.sh
-  chmod +x $DISK/root/systemd/tlsnotary_notaryserver.sh
-  chmod +x $DISK/root/systemd/tlsnotary_signingserver.sh
 
   umount /dev/xvdf1
 </bash>

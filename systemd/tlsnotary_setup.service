@@ -1,6 +1,5 @@
 [Unit]
  Description=TLSNotary setup
- ConditionPathExists=/root/systemd/tlsnotary_setup.sh
 
 [Service]
  Type=oneshot

@@ -1,6 +1,5 @@
 [Unit]
  Description=TLSNotary notary server
- ConditionPathExists=/root/systemd/tlsnotary_notaryserver.sh
  After=tlsnotary_setup.service
  Requires=tlsnotary_setup.service
 

@@ -5,112 +5,180 @@ import subprocess
 import threading
 import random
 import string
+import hmac
+import json
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+shared_memory = '/dev/shm/'
 
 mps = {}
 mpsLock = threading.Lock()
-
-reliable_sites = {} #format {'github.com': {'expires':'date', 'modulus':data}, 'archive.org': {...}   }
-
-def import_reliable_sites(d):
-    with open(os.path.join(d,'pubkeys.txt'),'rb') as f: raw = f.read()
-    lines = raw.decode().split('\n')
-    name = ''
-    expires = ''
-    modulus = ''
-    i = -1
-    while True:
-        i += 1
-        if i >= len(lines):
-            break
-        x = lines[i]
-        if x.startswith('#'):
-            continue
-        elif x.startswith('Name='):
-            name=x[len('Name='):]
-        elif x.startswith('Expires='):
-            expires=x[len('Expires='):]
-        elif x.startswith('Modulus='):
-            mod_str = ''
-            while True:                
-                i +=1
-                if i >= len(lines):
-                    break
-                line = lines[i]
-                if line == '':
-                    break
-                mod_str += line
-            reliable_sites[name] = {'expires':expires, 'modulus':bytes.fromhex(mod_str)}
-
 
 
 class MessageProcessor(object):
     def __init__(self):
         self.id = None
-        self.tlsns = shared.TLSNClientSession()
         self.state = 0
         self.time_last_seen = int(time.time())
+        self.ms = None
+        self.client_write_key = None
+        self.server_write_key = None
+        self.client_write_IV = None
+        self.server_write_IV = None
+        self.ECpubkey = None 
+        self.ECprivkey = None ##to be included in the sigserver's signature
+        self.server_pubkey = None #to be included in the sigserver's signature
+        self.commit_hash = None #to be included in the sigserver's signature
 
     def process_messages(self, request, b64data):
-        if request == 'rcr_rsr_rsname_n' and self.state == 0:
-            msg_data = base64.b64decode(b64data)
-            rss = shared.TLSNClientSession()
-            rss.client_random = msg_data[:32]
-            rss.server_random = msg_data[32:64]
-            rs_choice_first5 = msg_data[64:69].decode()
-            rs_choice = [k for k in  reliable_sites.keys() if k.startswith(rs_choice_first5)][0]
-            if not rs_choice:
-                raise Exception('Unknown reliable site', rs_choice_first5)
-            n = msg_data[69:]
-            rss.server_modulus = reliable_sites[rs_choice]['modulus']
-            rss.server_mod_length = len(rss.server_modulus)
-            rss.set_auditor_secret()
-            rss.set_enc_second_half_pms()           
-            rrsapms = rss.enc_second_half_pms
-
-            self.tlsns.auditor_secret, self.tlsns.auditor_padding_secret=rss.auditor_secret, rss.auditor_padding_secret
-            self.tlsns.server_mod_length, self.tlsns.server_modulus = len(n), n
-            self.tlsns.set_enc_second_half_pms()
-            self.time_last_seen = int(time.time())      
-            return 'rrsapms_rhmac_rsapms', base64.b64encode(rrsapms+rss.p_auditor+self.tlsns.enc_second_half_pms)
-
-        elif request == 'cs_cr_sr_hmacms_verifymd5sha' and self.state == 0: 
+        print('self.state', self.state)
+        if request == 'cr_sr_spk' and self.state == 0:
             self.state = 1
-            data = base64.b64decode(b64data)
-            assert len(data) == 125
-            self.tlsns.chosen_cipher_suite = int.from_bytes(data[:1], 'big')
-            self.tlsns.client_random = data[1:33]
-            self.tlsns.server_random = data[33:65]
-            md5_hmac1_for_ms=data[65:89]
-            verify_md5 = data[89:105]
-            verify_sha = data[105:125]
-            self.tlsns.set_auditor_secret()
-            self.tlsns.set_master_secret_half(half=1,provided_p_value=md5_hmac1_for_ms)         
-            garbageized_hmac = self.tlsns.get_p_value_ms('auditor',[2]) #withhold the server mac
-            hmac_verify_md5 = self.tlsns.get_verify_hmac(verify_sha, verify_md5, half=1)	
-            hmacms_hmacek_hmacverify = self.tlsns.p_auditor[24:]+garbageized_hmac+hmac_verify_md5
-            self.time_last_seen = int(time.time())
-            return 'hmacms_hmacek_hmacverify', base64.b64encode(hmacms_hmacek_hmacverify)
+            msg_data = base64.b64decode(b64data)
+            client_random = msg_data[:32]
+            server_random = msg_data[32:64]
+            self.server_pubkey = msg_data[64:129]
 
-        elif  request == 'verify_md5sha2' and self.state == 1:
+            privder = subprocess.check_output([
+                'openssl',
+                'ecparam',
+                '-name',
+                'prime256v1',
+                '-genkey',
+                '-noout',
+                '-outform',
+                'der'])
+
+            self.ECprivkey = privder[7:39]
+            self.ECpubkey = privder[-65:]
+
+            #ecdh = ECDH(curve=NIST256p)
+            #ecdh.generate_private_key()
+            #self.ECprivkey = ecdh.private_key.to_string()
+            #self.ECpubkey = b'\x04' + ecdh.get_public_key().to_string()
+
+            preasn1 = b'\x30\x59\x30\x13\x06\x07\x2A\x86\x48\xCE\x3D\x02\x01\x06\x08\x2A\x86\x48\xCE\x3D\x03\x01\x07\x03\x42\x00'
+
+            pubpath = os.path.join(shared_memory, ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10)))
+            privpath = os.path.join(shared_memory, ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10)))
+
+            with open(pubpath, 'wb') as f:
+                f.write(preasn1+self.server_pubkey)
+
+            with open(privpath, 'wb') as f:
+                f.write(privder)
+
+            secret = subprocess.check_output([
+                'openssl',
+                'pkeyutl',
+                '-derive',
+                '-inkey',
+                privpath,
+                '-peerkey',
+                pubpath])
+
+            os.remove(pubpath)
+            os.remove(privpath)
+
+            #Calculate master secret
+            seed = str.encode("master secret") + client_random + server_random
+            a0 = seed
+            a1 = hmac.new(secret, a0, hashlib.sha256).digest()
+            a2 = hmac.new(secret, a1, hashlib.sha256).digest()
+            p1 = hmac.new(secret, a1+seed, hashlib.sha256).digest()
+            p2 = hmac.new(secret, a2+seed, hashlib.sha256).digest()
+            ms = (p1+p2)[0:48]
+            self.ms = ms
+
+            #Expand keys
+            seed = str.encode("key expansion") + server_random + client_random
+            a0 = seed
+            a1 = hmac.new(ms , a0, hashlib.sha256).digest()
+            a2 = hmac.new(ms , a1, hashlib.sha256).digest()
+            p1 = hmac.new(ms, a1+seed, hashlib.sha256).digest()
+            p2 = hmac.new(ms, a2+seed, hashlib.sha256).digest()
+            ek = (p1 + p2)[:40]
+            #AES GCM doesnt need MAC keys
+            self.client_write_key = ek[:16]
+            self.server_write_key = ek[16:32]
+            self.client_write_IV = ek[32:36]
+            self.server_write_IV = ek[36:40]
+            return 'cpk', base64.b64encode(self.ECpubkey)
+
+
+
+        elif request == 'hshash' and self.state == 1: 
             self.state = 2
-            md5sha2 = base64.b64decode(b64data)
-            md5hmac2 = self.tlsns.get_verify_hmac(md5sha2[16:],md5sha2[:16],half=1,is_for_client=False)
-            self.time_last_seen = int(time.time())
-            return 'verify_hmac2',  base64.b64encode(md5hmac2)
+            hs_hash = base64.b64decode(b64data)
+            assert len(hs_hash) == 32
+            
+            seed = str.encode('client finished') + hs_hash
+            a0 = seed
+            a1 = hmac.new(self.ms, a0, hashlib.sha256).digest()
+            p1 = hmac.new(self.ms, a1+seed, hashlib.sha256).digest()
+            verify_data = p1[:12]
 
-        elif request == 'commit_hash' and self.state == 2:
-            commit_hash = base64.b64decode(b64data)
-            response_hash = commit_hash[:32]
+            return 'vd_cwk_cwi', base64.b64encode(verify_data + self.client_write_key + self.client_write_IV)
+
+
+
+
+
+        elif request == 'encf_hshash2' and self.state == 2:
+            self.state = 3
+            data = base64.b64decode(b64data)
+            assert(len(data) == 72)
+            enc_f = data[:40]
+            hshash2 = data[40:72]
+
+            explicit_nonce = enc_f[:8]
+            nonce = self.server_write_IV + explicit_nonce
+
+            aad = b'' #additional_data
+            aad += b'\x00\x00\x00\x00\x00\x00\x00\x00' #seq num 0
+            aad += b'\x16' # type 0x16 = Handshake
+            aad += b'\x03\x03' # TLS Version 1.2
+            aad += b'\x00\x10' # 16 bytes of unencrypted data
+            
+            aesgcm = AESGCM(self.server_write_key)
+            server_finished = aesgcm.decrypt(nonce, enc_f[8:40], aad)
+
+            assert (server_finished[:4] == b'\x14\x00\x00\x0c')
+            server_verify = server_finished[4:]
+
+            seed = str.encode('server finished') + hshash2
+            a0 = seed
+            a1 = hmac.new(self.ms, a0, hashlib.sha256).digest()
+            p1 = hmac.new(self.ms, a1+seed, hashlib.sha256).digest()
+            verify_data = p1[:12]
+
+            reply = b'\x00'
+            if (server_verify == verify_data):
+              reply = b'\x01'
+
+            return 'verify_status',  base64.b64encode(reply)
+
+
+
+        elif request == 'commithash' and self.state == 3:
+            self.state = 4
+            data = base64.b64decode(b64data)
+            self.commit_hash = data[:32]
+            
             time_bytes = int(time.time()).to_bytes(4, byteorder='big')
-            data_to_be_signed = hashlib.sha256(response_hash + self.tlsns.pms2 + self.tlsns.server_modulus + time_bytes).digest()
+            data_to_be_signed = hashlib.sha256(self.ECprivkey + self.server_pubkey + self.commit_hash + time_bytes).digest()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_address = ('127.0.0.1', 10003)
             sock.connect(server_address)
             sock.send(data_to_be_signed)
-            signing_server_sig = sock.recv(512)
+            signing_server_sig = sock.recv(80) #the sig is of variable length usually around 68-72 for P-256
+            sig_len = len(signing_server_sig).to_bytes(1, byteorder='big')
             sock.close()
-            return 'pms2', base64.b64encode(self.tlsns.pms2+signing_server_sig+time_bytes)
+
+
+            return 'swk_swi_sig_ecpriv_ecpub_time', base64.b64encode(self.server_write_key + self.server_write_IV +  sig_len + signing_server_sig + self.ECprivkey + self.ECpubkey + time_bytes)
         else:
             raise Exception("invalid request process_messages")
 
@@ -127,20 +195,12 @@ def handler(sock):
             print('No data received', sock.fileno())
             sock.close()
             return
-        lines = raw.decode().split('\r\n')
-        request = None
-        data = None
-        uid = None
-        for x in lines:
-            if x.startswith('Request: '):
-                request = x[len('Request: '):]
-                continue
-            elif x.startswith('Data: '):
-                data = x[len('Data: '):]
-                continue
-            elif x.startswith('UID: '):
-                uid = x[len('UID: '):]
-                continue
+        #/r/n/r//n separates the headers from the POST payload 
+        payload = raw.decode().split('\r\n\r\n')[1]
+        json_object = json.loads(payload)
+        request = json_object['request']
+        data = json_object['data']
+        uid = json_object['uid']
         if (not request or not data or not uid):
             print('One of the headers missing', sock.fileno())
             sock.close()
@@ -196,7 +256,6 @@ if __name__ == "__main__":
     proj_dir = os.path.dirname(os.path.realpath(__file__))
     sys.path.append(proj_dir)
     import shared
-    import_reliable_sites(proj_dir)
 
     threading.Thread(target=mps_purge).start()
 

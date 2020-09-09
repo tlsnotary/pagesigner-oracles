@@ -8,6 +8,7 @@ From within the instance:
 <bash>
   sudo -s
   
+  pip3 install cryptography
   git clone https://github.com/tlsnotary/pagesigner-oracles
   cd pagesigner-oracles
   mkdir /mnt/disk

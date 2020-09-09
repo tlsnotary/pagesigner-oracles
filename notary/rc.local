@@ -28,10 +28,12 @@ echo ubuntu:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
 echo notary:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
 echo sigserver:$(tr -dc "[:alpha:]" < /dev/urandom | head -c 20) | chpasswd
 
-sudo -u sigserver openssl genrsa -out /dev/shm/private.pem 4096
+#sudo -u sigserver openssl genrsa -out /dev/shm/private.pem 4096
+sudo -u sigserver openssl ecparam -genkey -name prime256v1 -noout -out private.pem
 #private key readable only by sigserver user
 sudo -u sigserver chmod 0400 /dev/shm/private.pem
-sudo -u sigserver openssl rsa -in /dev/shm/private.pem -outform PEM -pubout -out /dev/shm/public.pem
+#sudo -u sigserver openssl rsa -in /dev/shm/private.pem -outform PEM -pubout -out /dev/shm/public.pem
+sudo -u sigserver openssl ec -in private.pem -pubout -out public.pem
 echo "PageSigner public key for verification"
 cat /dev/shm/public.pem
 #I got weird permission errors when trying to access files in /home/ubuntu with sudo -u ubuntu

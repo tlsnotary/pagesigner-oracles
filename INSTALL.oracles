@@ -60,23 +60,13 @@ Make sure that:
   Instance's "launchTime" and volume's "attachTime" happened on the same minute with no more than 3 seconds between the events.
   Console Output (right-click an instance ->Instance Settings -> Get System Log) is available (after ~5 mins), since it was observed that sometimes an instance may not have any.
 
-Internal use only:
-in order to tranform the pubkey from Console Output into an array of numbers for PageSigner:
-
-openssl rsa -pubin -inform PEM -text -noout < pubkey.pem
-#copy-paste the number lines into python console like this: raw="""(Ctrl+V)"""
-intstr = ''
-for h in ''.join(raw.split()).split(':')[1:]:
-    intstr += str(int(h,16))+','
-#intstr now contains the string to be pasted into oracles.js (sans the last comma)
-  
 
 -------------------------------------------------------------------------------
 HOW CAN YOU PROVE TO THE WORLD THAT A CERTAIN IP ADDRESS IS RUNNING THE ORACLE INSTANCE
 -------------------------------------------------------------------------------
 Use aws_query.py to create and publish URLs for requests 
 DescribeInstances
-DescribeInstanceAttribute
+DescribeInstanceAttribute (userData, kernel, ramdisk)
 DescribeVolumes
 GetUser
 GetConsoleOutput

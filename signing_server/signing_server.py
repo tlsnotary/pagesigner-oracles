@@ -15,7 +15,7 @@ def handler(sock, addr):
     data = sock.recv(32)
     myuid = os.path.join(shared_memory, ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10)))
     with open(myuid, 'wb') as f: f.write(data)
-    mysig = subprocess.check_output([openssl_path,'rsautl','-sign','-inkey', os.path.join(shared_memory, 'private.pem') ,'-keyform','PEM', '-in', myuid])
+    mysig = subprocess.check_output([openssl_path, 'dgst', '-sha256', '-sign', os.path.join(shared_memory, 'private.pem') , myuid])
     os.remove(myuid)
     sock.send(mysig)
     sock.close()

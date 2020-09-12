@@ -16,12 +16,86 @@ mps = {}
 mpsLock = threading.Lock()
 
 
+def rand_str():
+    return ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10))
+
+def generateECKeypair():
+    privDER = subprocess.check_output([
+            'openssl',
+            'ecparam',
+            '-name',
+            'prime256v1',
+            '-genkey',
+            '-outform',
+            'der'])
+
+    privpath = os.path.join(shared_memory, rand_str()+'.der')
+    with open(privpath, 'wb') as f:
+        f.write(privDER)
+
+    pubDER = subprocess.check_output([
+            'openssl',
+            'ec',
+            '-in',
+            privpath,
+            '-inform',
+            'der',
+            '-pubout',
+            '-outform',
+            'der'])
+
+    os.remove(privpath)
+    return (privDER, pubDER)
+
+
+def getECDHSecret (myPrivDER, hisPubRaw):
+    #asn1 encoding which has to be prepared to the raw pubkey to make it DER-formatted 
+    #so that openssl can work with it
+    preasn1 = b'\x30\x59\x30\x13\x06\x07\x2A\x86\x48\xCE\x3D\x02\x01\x06\x08\x2A\x86\x48\xCE\x3D\x03\x01\x07\x03\x42\x00'
+    pubpath = os.path.join(shared_memory, rand_str()+'.der')
+    with open(pubpath, 'wb') as f:
+        f.write( preasn1 + hisPubRaw)
+
+    privpath = os.path.join(shared_memory, rand_str()+'.der')
+    with open(privpath, 'wb') as f:  
+        f.write(myPrivDER)
+
+    secret = subprocess.check_output([
+                'openssl',
+                'pkeyutl',
+                '-derive',
+                '-inkey',
+                privpath,
+                '-keyform',
+                'der',
+                '-peerkey',
+                pubpath,
+                '-peerform',
+                'der'])
+
+    os.remove(pubpath)
+    os.remove(privpath)
+    return secret
+
+def AESGCMencrypt (key, data):
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)
+    ciphertext = aesgcm.encrypt(nonce, data, None)
+    return (nonce+ciphertext)
+    print('ciphertext', len(ciphertext), len(data))
+
+    
+
+
+    
+
 class MessageProcessor(object):
     def __init__(self):
         self.id = None
         self.state = 0
         self.time_last_seen = int(time.time())
         self.ms = None
+        self.commSymmetricKey = None #used to en/decrypt messages to/from the auditee
         self.client_write_key = None
         self.server_write_key = None
         self.client_write_IV = None
@@ -33,53 +107,26 @@ class MessageProcessor(object):
 
     def process_messages(self, request, b64data):
         print('self.state', self.state)
-        if request == 'cr_sr_spk' and self.state == 0:
+        if request == 'cr_sr_spk_commpk' and self.state == 0:
             self.state = 1
             msg_data = base64.b64decode(b64data)
             client_random = msg_data[:32]
             server_random = msg_data[32:64]
             self.server_pubkey = msg_data[64:129]
+            comm_peerkey = msg_data[129:194] #The other party's pubkey for ECDH
+            print('comm_peerkey', len(comm_peerkey))
 
-            privder = subprocess.check_output([
-                'openssl',
-                'ecparam',
-                '-name',
-                'prime256v1',
-                '-genkey',
-                '-noout',
-                '-outform',
-                'der'])
+            #derive ECDH shared secret for communication
+            commPrivDER, commPubDER = generateECKeypair()
+            commPubkey = commPubDER[-65:]
+            #all future sensitive data will be encrypted with this key
+            self.commSymmetricKey = getECDHSecret(commPrivDER, comm_peerkey)[:16]
 
-            self.ECprivkey = privder[7:39]
-            self.ECpubkey = privder[-65:]
 
-            #ecdh = ECDH(curve=NIST256p)
-            #ecdh.generate_private_key()
-            #self.ECprivkey = ecdh.private_key.to_string()
-            #self.ECpubkey = b'\x04' + ecdh.get_public_key().to_string()
-
-            preasn1 = b'\x30\x59\x30\x13\x06\x07\x2A\x86\x48\xCE\x3D\x02\x01\x06\x08\x2A\x86\x48\xCE\x3D\x03\x01\x07\x03\x42\x00'
-
-            pubpath = os.path.join(shared_memory, ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10)))
-            privpath = os.path.join(shared_memory, ''.join(random.choice(string.ascii_letters + string.digits) for x in range(10)))
-
-            with open(pubpath, 'wb') as f:
-                f.write(preasn1+self.server_pubkey)
-
-            with open(privpath, 'wb') as f:
-                f.write(privder)
-
-            secret = subprocess.check_output([
-                'openssl',
-                'pkeyutl',
-                '-derive',
-                '-inkey',
-                privpath,
-                '-peerkey',
-                pubpath])
-
-            os.remove(pubpath)
-            os.remove(privpath)
+            ECprivDER, ECpubDER = generateECKeypair()
+            self.ECprivkey = ECprivDER[7:39]
+            self.ECpubkey = ECpubDER[-65:]
+            secret = getECDHSecret(ECprivDER, self.server_pubkey)
 
             #Calculate master secret
             seed = str.encode("master secret") + client_random + server_random
@@ -104,7 +151,7 @@ class MessageProcessor(object):
             self.server_write_key = ek[16:32]
             self.client_write_IV = ek[32:36]
             self.server_write_IV = ek[36:40]
-            return 'cpk', base64.b64encode(self.ECpubkey)
+            return 'cpk_commpk', base64.b64encode(self.ECpubkey + commPubkey)
 
 
 
@@ -119,8 +166,8 @@ class MessageProcessor(object):
             p1 = hmac.new(self.ms, a1+seed, hashlib.sha256).digest()
             verify_data = p1[:12]
 
-            return 'vd_cwk_cwi', base64.b64encode(verify_data + self.client_write_key + self.client_write_IV)
-
+            enc = AESGCMencrypt(self.commSymmetricKey, verify_data + self.client_write_key + self.client_write_IV)
+            return 'vd_cwk_cwi', base64.b64encode(enc)
 
 
 
@@ -177,8 +224,9 @@ class MessageProcessor(object):
             sig_len = len(signing_server_sig).to_bytes(1, byteorder='big')
             sock.close()
 
-
-            return 'swk_swi_sig_ecpriv_ecpub_time', base64.b64encode(self.server_write_key + self.server_write_IV +  sig_len + signing_server_sig + self.ECprivkey + self.ECpubkey + time_bytes)
+            enc = AESGCMencrypt(self.commSymmetricKey, self.server_write_key + self.server_write_IV + 
+                sig_len + signing_server_sig + self.ECprivkey + self.ECpubkey + time_bytes)
+            return 'swk_swi_sig_ecpriv_ecpub_time', base64.b64encode(enc)
         else:
             raise Exception("invalid request process_messages")
 
@@ -218,11 +266,10 @@ def handler(sock):
             mpsLock.release()
     
         response, respdata = mps[uid].process_messages(request, data)
+        payload = json.dumps({'response':response, 'data':respdata.decode()})
         raw_response = ('HTTP/1.0 200 OK\r\n'+ \
             'Access-Control-Allow-Origin: *\r\n'+ \
-            'Access-Control-Expose-Headers: Response,Data\r\n'+ \
-            'Response: '+response+'\r\n'+ \
-            'Data: '+respdata.decode()+'\r\n\r\n').encode()
+                '\r\n\r\n'+ payload).encode()
 
         sock.send(raw_response)
         print('Sent response', response, sock.fileno())
@@ -248,15 +295,8 @@ def mps_purge():
 
 
 if __name__ == "__main__":
-    #redirrect stdout and stderr to tty1 which we can read using aws screenshot
-    #/dev/tty1 is assumed to be user-writable
-    sys.stdout = open("/dev/tty1", "w")
-    sys.stderr = open("/dev/tty1", "w")
     
-    proj_dir = os.path.dirname(os.path.realpath(__file__))
-    sys.path.append(proj_dir)
-    import shared
-
+    print('TLSNotary server started')
     threading.Thread(target=mps_purge).start()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

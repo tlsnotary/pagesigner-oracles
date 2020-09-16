@@ -39,11 +39,11 @@ chmod 777 /dev/shm/signing_server.py
 chown sigserver:sigserver /dev/shm/signing_server.py
 
 #using -I to insert rules to the top of the list, i.e. they will appear in iptables in reverse order
-#allow only one port and localhost
-#iptables -I INPUT -j DROP
-#iptables -I INPUT -p tcp --dport 10011 -j ACCEPT
+#allow only port 10011 and localhost
+iptables -I INPUT -j DROP
+iptables -I INPUT -p tcp --dport 10011 -j ACCEPT
 #anti DoS: allow no more than 20 new connections every 40 seconds
-#iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --set
+iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --set
 #xt_recent cant do more than 20 by default
-#iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --update --seconds 40 --hitcount 20 -j DROP
-#iptables -I INPUT -i lo -j ACCEPT
+iptables -I INPUT -p tcp --dport 10011 -m state --state NEW -m recent --update --seconds 40 --hitcount 20 -j DROP
+iptables -I INPUT -i lo -j ACCEPT

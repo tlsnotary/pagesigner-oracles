@@ -70,4 +70,22 @@ args.append('InstanceId='+instance_id)
 args.append('Attribute=userData')
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
-makeurl(args, availability_zone, 'DIA')
+makeurl(args, availability_zone, 'DIAud')
+
+args = []
+args.extend(common_args)
+args.append('Action=DescribeInstanceAttribute')
+args.append('InstanceId='+instance_id)
+args.append('Attribute=kernel')
+args.append('AWSAccessKeyId='+key)
+args.append('Version=2014-10-01')
+makeurl(args, availability_zone, 'DIAk')
+
+args = []
+args.extend(common_args)
+args.append('Action=DescribeInstanceAttribute')
+args.append('InstanceId='+instance_id)
+args.append('Attribute=ramdisk')
+args.append('AWSAccessKeyId='+key)
+args.append('Version=2014-10-01')
+makeurl(args, availability_zone, 'DIAr')

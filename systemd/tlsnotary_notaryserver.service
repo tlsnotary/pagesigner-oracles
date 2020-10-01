@@ -1,13 +1,21 @@
 [Unit]
  Description=TLSNotary notary server
  After=tlsnotary_setup.service
- Requires=tlsnotary_setup.service
+ Wants=tlsnotary_setup.service
 
 [Service]
- ExecStart=/usr/bin/python3 /dev/shm/notary/notaryserver.py
+ #python should be run with -u unbuffered output otherwise we'll see no output
+ ExecStart=/usr/bin/python3 -u /dev/shm/notary/notaryserver.py
  TimeoutSec=0
  StandardOutput=file:/dev/tty1
  User=notary
+ #start after all services were started because tty1 may not be available too early 
+ Type=idle
 
 [Install]
  WantedBy=multi-user.target
+
+[Timer]
+ #For some reason Type=idle is not enough, OnBootSec must also be present
+ #otherwise there was no output on the Console
+ OnBootSec=3min

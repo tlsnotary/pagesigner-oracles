@@ -1,8 +1,8 @@
 -------------------------------------------------------------------------------
 HOW TO CREATE A TLSNOTARY ORACLE EBS SNAPSHOT.
 -------------------------------------------------------------------------------
-In N.Virginia region create a volume from snap-02e105f83f77cd927 (used by Ubuntu Server 18.04 LTS ami-04b9e92b5572fa0d1).
-Attach the volume to any running instance as e.g. /dev/sdf.
+In N.Virginia region create a volume from snap-02e105f83f77cd927 (used by Ubuntu Server 18.04 LTS ami-04b9e92b5572fa0d1) in the same Availability Zone as your running instance.
+Attach the volume to the running instance as e.g. /dev/sdf.
 
 From within the instance:	
 <bash>
@@ -32,10 +32,13 @@ From within the instance:
   
   cp systemd/tlsnotary_setup.service $DISK/etc/systemd/system/tlsnotary_setup.service
   cp systemd/tlsnotary_notaryserver.service $DISK/etc/systemd/system/tlsnotary_notaryserver.service
+  cp systemd/tlsnotary_notaryserver.timer $DISK/lib/systemd/system/tlsnotary_notaryserver.timer
   cp systemd/tlsnotary_signingserver.service $DISK/etc/systemd/system/tlsnotary_signingserver.service
+  
   #make services start on boot
   ln -s $DISK/etc/systemd/system/tlsnotary_setup.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_setup.service
   ln -s $DISK/etc/systemd/system/tlsnotary_notaryserver.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_notaryserver.service  
+  ln -s $DISK/lib/systemd/system/tlsnotary_notaryserver.timer $DISK/etc/systemd/system/timers.target.wants/tlsnotary_notaryserver.timer 
   ln -s $DISK/etc/systemd/system/tlsnotary_signingserver.service $DISK/etc/systemd/system/multi-user.target.wants/tlsnotary_signingserver.service
   chmod +x $DISK/root/systemd/tlsnotary_setup.sh
 
@@ -57,8 +60,10 @@ HOW TO LAUNCH AN ORACLE INSTANCE FROM THE PUBLIC SNAPSHOT.
 Launch the AMI you created from AWS management console. Choose "Proceed without a key pair".
 
 Make sure that:
-  Instance's "launchTime" and volume's "attachTime" happened on the same minute with no more than 3 seconds between the events.
+  Instance's "launchTime" and volume's "attachTime" happened on the same minute with no more than 2 seconds between the events.
   Console Output (right-click an instance ->Instance Settings -> Get System Log) is available (after ~5 mins), since it was observed that sometimes an instance may not have any.
+  In Console Output there are no spurious lines between -----BEGIN PUBLIC KEY----- and -----END PUBLIC KEY-----.
+ 
 
 -------------------------------------------------------------------------------
 HOW CAN YOU PROVE TO THE WORLD THAT A CERTAIN IP ADDRESS IS RUNNING THE ORACLE INSTANCE

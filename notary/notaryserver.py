@@ -77,14 +77,19 @@ def getECDHSecret (myPrivDER, hisPubRaw):
     os.remove(privpath)
     return secret
 
+
 def AESGCMencrypt (key, data):
     aesgcm = AESGCM(key)
     nonce = os.urandom(12)
     ciphertext = aesgcm.encrypt(nonce, data, None)
     return (nonce+ciphertext)
-    print('ciphertext', len(ciphertext), len(data))
 
-    
+
+def AESGCMdecrypt (key, data):
+    aesgcm = AESGCM(key)
+    nonce = data[:12]
+    cleartext = aesgcm.decrypt(nonce, data[12:], None)
+    return cleartext
 
 
     
@@ -96,14 +101,9 @@ class MessageProcessor(object):
         self.time_last_seen = int(time.time())
         self.ms = None
         self.commSymmetricKey = None #used to en/decrypt messages to/from the auditee
-        self.client_write_key = None
-        self.server_write_key = None
-        self.client_write_IV = None
-        self.server_write_IV = None
-        self.ECpubkey = None 
-        self.ECprivkey = None ##to be included in the sigserver's signature
+        self.server_write_key = None #to be included in the sigserver's signature
+        self.server_write_IV = None #to be included in the sigserver's signature
         self.server_pubkey = None #to be included in the sigserver's signature
-        self.commit_hash = None #to be included in the sigserver's signature
 
     def process_messages(self, request, b64data):
         print('self.state', self.state)
@@ -122,9 +122,7 @@ class MessageProcessor(object):
             #all future sensitive data will be encrypted with this key
             self.commSymmetricKey = getECDHSecret(commPrivDER, comm_peerkey)[:16]
 
-
             ECprivDER, ECpubDER = generateECKeypair()
-            self.ECprivkey = ECprivDER[7:39]
             self.ECpubkey = ECpubDER[-65:]
             secret = getECDHSecret(ECprivDER, self.server_pubkey)
 
@@ -147,17 +145,30 @@ class MessageProcessor(object):
             p2 = hmac.new(ms, a2+seed, hashlib.sha256).digest()
             ek = (p1 + p2)[:40]
             #AES GCM doesnt need MAC keys
-            self.client_write_key = ek[:16]
+            client_write_key = ek[:16]
             self.server_write_key = ek[16:32]
-            self.client_write_IV = ek[32:36]
+            client_write_IV = ek[32:36]
             self.server_write_IV = ek[36:40]
-            return 'cpk_commpk', base64.b64encode(self.ECpubkey + commPubkey)
+            #sign the communication EC key
+            data_to_be_signed = hashlib.sha256(commPubkey).digest()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_address = ('127.0.0.1', 10003)
+            sock.connect(server_address)
+            sock.send(data_to_be_signed)
+            signing_server_sig = sock.recv(80) #the sig is of variable length usually around 68-72 for P-256
+            sig_len = len(signing_server_sig).to_bytes(1, byteorder='big')
+            sock.close()
+
+            enc = AESGCMencrypt(self.commSymmetricKey, sig_len + signing_server_sig + self.ECpubkey + client_write_key + client_write_IV)
+            #comunication key is not encrypted
+            return 'commpk_commpksig_cpk_cwk_cwi', base64.b64encode(commPubkey+enc)
 
 
 
         elif request == 'hshash' and self.state == 1: 
             self.state = 2
-            hs_hash = base64.b64decode(b64data)
+            enc = base64.b64decode(b64data)
+            hs_hash = AESGCMdecrypt(self.commSymmetricKey, enc)
             assert len(hs_hash) == 32
             
             seed = str.encode('client finished') + hs_hash
@@ -166,15 +177,15 @@ class MessageProcessor(object):
             p1 = hmac.new(self.ms, a1+seed, hashlib.sha256).digest()
             verify_data = p1[:12]
 
-            enc = AESGCMencrypt(self.commSymmetricKey, verify_data + self.client_write_key + self.client_write_IV)
-            return 'vd_cwk_cwi', base64.b64encode(enc)
-
+            enc = AESGCMencrypt(self.commSymmetricKey, verify_data)
+            return 'vd', base64.b64encode(enc)
 
 
 
         elif request == 'encf_hshash2' and self.state == 2:
             self.state = 3
-            data = base64.b64decode(b64data)
+            enc = base64.b64decode(b64data)
+            data = AESGCMdecrypt(self.commSymmetricKey, enc)
             assert(len(data) == 72)
             enc_f = data[:40]
             hshash2 = data[40:72]
@@ -204,17 +215,19 @@ class MessageProcessor(object):
             if (server_verify == verify_data):
               reply = b'\x01'
 
-            return 'verify_status',  base64.b64encode(reply)
+            enc = AESGCMencrypt(self.commSymmetricKey, reply)
+            return 'verify_status',  base64.b64encode(enc)
 
 
 
         elif request == 'commithash' and self.state == 3:
             self.state = 4
-            data = base64.b64decode(b64data)
-            self.commit_hash = data[:32]
+            enc = base64.b64decode(b64data)
+            data = AESGCMdecrypt(self.commSymmetricKey, enc)
+            commit_hash = data[:32]
             
             time_bytes = int(time.time()).to_bytes(4, byteorder='big')
-            data_to_be_signed = hashlib.sha256(self.ECprivkey + self.server_pubkey + self.commit_hash + time_bytes).digest()
+            data_to_be_signed = hashlib.sha256(self.server_pubkey + self.server_write_key + self.server_write_IV + commit_hash + time_bytes).digest()
 
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             server_address = ('127.0.0.1', 10003)
@@ -224,9 +237,8 @@ class MessageProcessor(object):
             sig_len = len(signing_server_sig).to_bytes(1, byteorder='big')
             sock.close()
 
-            enc = AESGCMencrypt(self.commSymmetricKey, self.server_write_key + self.server_write_IV + 
-                sig_len + signing_server_sig + self.ECprivkey + self.ECpubkey + time_bytes)
-            return 'swk_swi_sig_ecpriv_ecpub_time', base64.b64encode(enc)
+            enc = AESGCMencrypt(self.commSymmetricKey, self.server_write_key + self.server_write_IV + sig_len + signing_server_sig + time_bytes)
+            return 'swk_swi_sig_time', base64.b64encode(enc)
         else:
             raise Exception("invalid request process_messages")
 
@@ -243,7 +255,7 @@ def handler(sock):
             print('No data received', sock.fileno())
             sock.close()
             return
-        #/r/n/r//n separates the headers from the POST payload 
+        #\r\n\r\n separates the headers from the POST payload 
         payload = raw.decode().split('\r\n\r\n')[1]
         json_object = json.loads(payload)
         request = json_object['request']
@@ -296,7 +308,7 @@ def mps_purge():
 
 if __name__ == "__main__":
     
-    print('TLSNotary server started')
+    print('PageSigner2 server started')
     threading.Thread(target=mps_purge).start()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

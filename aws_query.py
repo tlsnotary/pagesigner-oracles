@@ -4,19 +4,21 @@ import base64
 import hashlib
 from urllib import parse
 
-if len(sys.argv) != 5:
+if len(sys.argv) != 6:
     print ('Output HTTPS GET links to be used to check the oracle status')
     print ('The default availability zone is ec2.us-east-1.amazonaws.com')
-    print ('Usage: instance-id volume-id AWS-ID AWS-secret')
-    print ('Where instance-id is the oracle instance and volume-id is the volume attached to it')
+    print ('Usage: instance-id volume-id ami-id AWS-ID AWS-secret')
+    print ('Where instance-id is the oracle instance, volume-id is the volume attached to it, ')
+    print ('and ami-id is the AMI which was launched to create this instance')
     exit(0)
 
 common_args = [('Expires=2025-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
 availability_zone = 'ec2.us-east-1.amazonaws.com'
 instance_id = sys.argv[1]
 volume_id = sys.argv[2]
-key = sys.argv[3]
-secret = sys.argv[4]
+ami_id = sys.argv[3]
+key = sys.argv[4]
+secret = sys.argv[5]
 
 def makeurl(args, endpoint, abbr):
     args.sort()
@@ -89,3 +91,11 @@ args.append('Attribute=ramdisk')
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
 makeurl(args, availability_zone, 'DIAr')
+
+args = []
+args.extend(common_args)
+args.append('Action=DescribeImages')
+args.append('ImageId.1='+ami_id)
+args.append('AWSAccessKeyId='+key)
+args.append('Version=2014-10-01')
+makeurl(args, availability_zone, 'DImg')

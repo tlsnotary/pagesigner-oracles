@@ -13,9 +13,4 @@
  Type=idle
 
 [Install]
- WantedBy=multi-user.target
-
-[Timer]
- #For some reason Type=idle is not enough, OnBootSec must also be present
- #otherwise there was no output on the Console
- OnBootSec=3min
+WantedBy=multi-user.target

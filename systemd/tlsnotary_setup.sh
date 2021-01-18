@@ -14,11 +14,11 @@ pass2="$(echo $random2 | base64 | head -c 20)"
 pass3="$(echo $random3 | base64 | head -c 20)"
 
 #assign random passwords for good measure
-echo notary:pass1 | chpasswd
-echo sigserver:pass2 | chpasswd
+echo notary:$pass1 | chpasswd
+echo sigserver:$pass2 | chpasswd
 #changing password for ubuntu gives error: chpasswd: (user ubuntu) pam_chauthtok() failed
 #TODO find out how to get around this error
-#echo ubuntu:pass3 | chpasswd
+#echo ubuntu:$pass3 | chpasswd
 
 sudo -u sigserver openssl ecparam -genkey -name prime256v1 -noout -out /dev/shm/private.pem
 #private key readable only by sigserver user

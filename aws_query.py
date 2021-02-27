@@ -12,7 +12,7 @@ if len(sys.argv) != 6:
     print ('and ami-id is the AMI which was launched to create this instance')
     exit(0)
 
-common_args = [('Expires=2025-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
+common_args = [('Expires=2030-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
 availability_zone = 'ec2.us-east-1.amazonaws.com'
 instance_id = sys.argv[1]
 volume_id = sys.argv[2]

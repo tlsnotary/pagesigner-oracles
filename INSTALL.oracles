@@ -64,6 +64,7 @@ Make sure that:
   Console Output (right-click an instance ->Instance Settings -> Get System Log) is available (after ~5 mins), since it was observed that sometimes an instance may not have any.
   In Console Output there are no spurious lines between -----BEGIN PUBLIC KEY----- and -----END PUBLIC KEY-----.
  
+Modify the security group to allow only inbound traffic on TCP port 10011. Disallow any outbound traffic.
 
 -------------------------------------------------------------------------------
 HOW CAN YOU PROVE TO THE WORLD THAT A CERTAIN IP ADDRESS IS RUNNING THE ORACLE INSTANCE
@@ -74,7 +75,7 @@ DescribeInstanceAttribute (userData, kernel, ramdisk)
 DescribeVolumes
 GetUser
 GetConsoleOutput
-
+DescribeImages
 
 -------------------------------------------------------------------------------
 FOR VERIFIERS: HOW TO CHECK THAT THE SNAPSHOT CONTENTS WAS NOT MALICIOUSLY MODIFIED.

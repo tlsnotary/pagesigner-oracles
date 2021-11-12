@@ -1,11 +1,15 @@
+# It seems that AWS only allows one service to print to System Log during graphical.target
+# This service will run the setup, touch a file to signal to tlsnotary_server to start,
+# and will wait for notary's masterkey to print it to console
+
 [Unit]
  Description=TLSNotary setup
+ After=multi-user.target
 
 [Service]
  Type=oneshot
- ExecStart=/root/systemd/tlsnotary_setup.sh
- TimeoutSec=0
+ ExecStart=/bin/bash '/root/systemd/tlsnotary_setup.sh'
  StandardOutput=journal+console
 
 [Install]
- WantedBy=multi-user.target
+ WantedBy=graphical.target

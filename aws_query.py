@@ -5,22 +5,25 @@ import hashlib
 from urllib import parse
 
 if len(sys.argv) != 6:
-    print ('Output HTTPS GET links to be used to check the oracle status')
+    print ('Output HTTPS GET links in JSON to be used to check the oracle status')
     print ('The default availability zone is ec2.us-east-1.amazonaws.com')
-    print ('Usage: instance-id volume-id ami-id AWS-ID AWS-secret')
-    print ('Where instance-id is the oracle instance, volume-id is the volume attached to it, ')
-    print ('and ami-id is the AMI which was launched to create this instance')
+    print ('Usage: ami-id instance-id volume-id AWS-ID AWS-secret')
+    print('Where:')
+    print('ami-id is the AMI from which the instance was launched,')
+    print('instance-id is the notary server instance, and')
+    print('volume-id is the volume attached to it.')
     exit(0)
 
 common_args = [('Expires=2030-01-01'), ('SignatureMethod=HmacSHA256'), ('SignatureVersion=2')]
 availability_zone = 'ec2.us-east-1.amazonaws.com'
-instance_id = sys.argv[1]
-volume_id = sys.argv[2]
-ami_id = sys.argv[3]
+ami_id = sys.argv[1]
+instance_id = sys.argv[2]
+volume_id = sys.argv[3]
 key = sys.argv[4]
 secret = sys.argv[5]
 
 def makeurl(args, endpoint, abbr):
+    # sorting is essential, otherwise AWS will refuse the signature
     args.sort()
     argstr = ''
     for arg in args:
@@ -31,14 +34,17 @@ def makeurl(args, endpoint, abbr):
     base64str = base64.b64encode(mhmac.digest()).strip().decode('utf-8')
     urlenc_sig = parse.quote_plus(base64str)
     final_string='https://'+endpoint+'/?'+argstr+'&Signature='+urlenc_sig
-    print ("'" + abbr + "':'" + final_string + "',")
+    print ('"' + final_string + '",')
 
-
+print('The JSON below is an input for URLFetcher:')
+print('[')
 args = []
 args.extend(common_args)
 args.append('Action=DescribeInstances')
 args.append('InstanceId='+instance_id)
 args.append('AWSAccessKeyId='+key)
+# Version= seems to be some AWS-specific expected value. If changed, it will
+# cause the HTTP query to fail
 args.append('Version=2014-10-01')
 makeurl(args, availability_zone, 'DI')
 
@@ -99,3 +105,4 @@ args.append('ImageId.1='+ami_id)
 args.append('AWSAccessKeyId='+key)
 args.append('Version=2014-10-01')
 makeurl(args, availability_zone, 'DImg')
+print(']')

@@ -1,0 +1,9 @@
+[Unit]
+Description=Start TLSNotary server when Path starts to exist
+
+[Path]
+PathExists=/home/ubuntu/setupdone
+Unit=tlsnotary_server.service
+
+[Install]
+ WantedBy=graphical.target

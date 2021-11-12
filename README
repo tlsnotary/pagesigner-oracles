@@ -1,5 +1,5 @@
-This repo contains instructions and files needed to set up an oracle server running as an AWS instance.
-This oracle server serves as a notary for PageSigner. It can be adopted to the needs of any other project which requires a trusted computing setup.
-The oracle server is set up in such a manner that even the owner who launched it is unable to log into it or see its internal state.
+Sandboxed notary server for PageSigner.
+This is an AWS EC2 instance which is set up in such a manner that even the admin who launched it is unable to log into it.
 
-See INSTALL.oracles for more in-depth instructions.
+
+See INSTALL for more in-depth instructions.

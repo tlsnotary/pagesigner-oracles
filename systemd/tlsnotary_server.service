@@ -1,0 +1,11 @@
+[Unit]
+ Description=TLSNotary notary server
+
+[Service]
+ ExecStart=/home/ubuntu/server/src/notary
+ StandardOutput=file:/dev/tty1
+ User=ubuntu
+ Group=ubuntu
+
+[Install]
+ WantedBy=graphical.target

@@ -34,10 +34,10 @@ def makeurl(args, endpoint, abbr):
     base64str = base64.b64encode(mhmac.digest()).strip().decode('utf-8')
     urlenc_sig = parse.quote_plus(base64str)
     final_string='https://'+endpoint+'/?'+argstr+'&Signature='+urlenc_sig
-    print ('"' + final_string + '",')
+    print ('"' + final_string + '",', end = '')
 
 print('The JSON below is an input for URLFetcher:')
-print('[')
+print('[', end = '')
 args = []
 args.extend(common_args)
 args.append('Action=DescribeInstances')

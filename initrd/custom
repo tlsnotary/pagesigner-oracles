@@ -1,0 +1,10 @@
+#!/bin/sh
+echo "making sure only one nvme device exists"
+for entry in /dev/nvme*
+do
+  echo "$entry"
+  if [ $entry != "/dev/nvme0" ] && [ $entry != "/dev/nvme0n1" ] && [ $entry != "/dev/nvme0n1p1" ]; then
+    echo "unexpected device, halting"
+    halt
+  fi
+done

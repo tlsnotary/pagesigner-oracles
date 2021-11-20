@@ -1,62 +1,28 @@
 -------------------------------------------------------------------------------
-HOW TO CREATE A PAGESIGNER ORACLE EBS SNAPSHOT.
+HOW TO CREATE A PAGESIGNER ORACLE INSTANCE.
 -------------------------------------------------------------------------------
-In N.Virginia region start a t3a.micro instance and attach to it a volume created from
+In N.Virginia region launch a t3a.micro instance and attach to it a volume created from
 snap-0c97f1c43c6bb2043 (used by Ubuntu 20.04 LTS ami-083654bd07b5da81d).
 
-From within the instance:	
-<bash>
-  git clone --recurse-submodules https://github.com/tlsnotary/pagesigner-oracles
+Log into the instance and run: 
+git clone --recurse-submodules https://github.com/tlsnotary/pagesigner-oracles
+cd pagesigner-oracles
+sudo ./make_oracle.sh
 
-  sudo -s
-  mkdir /mnt/disk
-  mount /dev/nvme1n1p1 /mnt/disk
-  DISK=/mnt/disk
-  rm $DISK/etc/init.d/ssh
-  rm $DISK/usr/sbin/sshd
-
-  # change root device
-  sed -i 's/root=PARTUUID=3fa6b62f-01/root=\/dev\/nvme0n1p1/' $DISK/boot/grub/grub.cfg 
-  # disable cloudinit modules through which user data can potentially be passed to the instance
-  sed -i 's/- bootcmd//' $DISK/etc/cloud/cloud.cfg
-  sed -i 's/- runcmd//' $DISK/etc/cloud/cloud.cfg
-  sed -i 's/- rightscale_userdata//' $DISK/etc/cloud/cloud.cfg
-  sed -i 's/- scripts-user//' $DISK/etc/cloud/cloud.cfg
-  sed -i 's/- ssh//' $DISK/etc/cloud/cloud.cfg
-
-  mkdir -p $DISK/home/ubuntu/server
-  cp -R pagesigner-oracles/server $DISK/home/ubuntu
-  cp -R pagesigner-oracles/systemd $DISK/root
-
-  cp pagesigner-oracles/systemd/tlsnotary_* $DISK/etc/systemd/system/
-  #make services start on boot
-  ln -s /etc/systemd/system/tlsnotary_server.service $DISK/etc/systemd/system/graphical.target.wants/
-  ln -s /etc/systemd/system/tlsnotary_server.path $DISK/etc/systemd/system/graphical.target.wants/
-  ln -s /etc/systemd/system/tlsnotary_setup.service $DISK/etc/systemd/system/graphical.target.wants/
-
-  umount /dev/nvme1n1p1
-</bash>
-		
 In AWS console: 
 - detach the volume
 - create a public snapshot
 - create an image from the snapshot
 - note the AMI ID and make the AMI public.
 
-
--------------------------------------------------------------------------------
-HOW TO LAUNCH AN ORACLE INSTANCE FROM THE PUBLIC SNAPSHOT.
--------------------------------------------------------------------------------
-Launch the AMI you created from AWS management console. Choose "Proceed without a key pair".
-
-Make sure that:
-  Instance's "launchTime" and volume's "attachTime" happened on the same minute
+Launch the AMI you created from AWS management console, making sure that:
+- instance's "launchTime" and volume's "attachTime" happened on the same minute
   with no more than 2 seconds between the events.
-  Console Output (right-click an instance ->Instance Settings -> Get System Log)
+- Console Output (right-click an instance ->Instance Settings -> Get System Log)
   is available (after ~5 mins)
 
 -------------------------------------------------------------------------------
-HOW TO PROVE THAT A CERTAIN IP ADDRESS IS RUNNING THE ORACLE INSTANCE
+HOW TO PROVE THAT AN INSTANCE IS A CORRECTLY SET UP ORACLE
 -------------------------------------------------------------------------------
 Use aws_query.py to create and publish URLs for requests 
 DescribeInstances
@@ -66,23 +32,23 @@ DescribeImages
 GetUser
 GetConsoleOutput
 
-
 -------------------------------------------------------------------------------
 FOR VERIFIERS: HOW TO CHECK THAT THE SNAPSHOT CONTENTS WAS NOT MALICIOUSLY MODIFIED.
 -------------------------------------------------------------------------------
-Repeat all the steps described in "HOW TO CREATE AN ORACLE EBS SNAPSHOT" but don't create a public snapshot.
-Attach the resulting volume (volX) to a running instance as /dev/sdg
-Create a volume from the snapshot (volY) you are verifying and attach it to /dev/sdh
-After that, run from within the instance
+Follow the steps in "HOW TO CREATE A PAGESIGNER ORACLE INSTANCE" up to and including "detach the volume".
+Attach the resulting volume (volX) to a running instance as /dev/sdg.
+Create a volume from snap-0c97f1c43c6bb2043 (volY) and attach it to /dev/sdh.
+
+Run from within the instance
 <bash>
   sudo -s
-  fsck /dev/xvdg1
-  fsck /dev/xvdh1
+  fsck /dev/nvme1n1p1
+  fsck /dev/nvme2n1p1
   #fsck must show that there were no errors
   mkdir /mnt/disk1
   mkdir /mnt/disk2
-  mount /dev/xvdg1 /mnt/disk1
-  mount /dev/xvdh1 /mnt/disk2
+  mount /dev/nvme1n1p1 /mnt/disk1
+  mount /dev/nvme2n1p1 /mnt/disk2
 </bash>
  
 Compare the hashes of volX and volY. 
@@ -92,70 +58,71 @@ The outputs must match.
 
 Also make sure that MBR and boot sector raw disk data match up to the point where filesystem starts.
 Note: we do not check ext4 filesystem headers because they are not deterministic.
-fdisk -l /dev/xvdg should show you that you only have 1 partition which starts at sector 2048
+fdisk -l /dev/nvme1n1 should show you that you only have 1 partition which starts at sector 2048
 
 <bash>
   cd /mnt/disk1
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
-  dd if=/dev/xvdg ibs=512 count=2048 | sha256sum
+  dd if=/dev/nvme1n1p1 ibs=512 count=2048 | sha256sum
 
   cd /mnt/disk2
   find . -printf '%h %f %U %G %m %l\n' | sort -t \n | sha256sum
   find . -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
-  dd if=/dev/xvdh ibs=512 count=2048 | sha256sum
+  dd if=/dev/nvme2n1p1  ibs=512 count=2048 | sha256sum
 </bash>
 
 
 -------------------------------------------------------------------------------
 FOR VERIFIERS: HOW TO DETERMINE THAT THE RUNNING ORACLE INSTANCE IS LEGIT
 -------------------------------------------------------------------------------
-The published URLs must conform to the checks performed in functions starting with check* in content/oracles.js.
-
+The published URLs must conform to the checks performed in 
+https://github.com/tlsnotary/pagesigner/blob/master/core/oracles.js
 
 -------------------------------------------------------------------------------
-POSSIBLE ATTACKS AND HOW THEY WILL BE MITIGATED
+POTENTIAL ATTACKS AND HOW THEY HAVE BEEN MITIGATED
 -------------------------------------------------------------------------------
 (or in other words, what prevents the AWS account owner from modifying the oracle instance code)
 
 
----Attack 1
-Launch the AMI with a malicious snapshot on /dev/xvda
+---Potential Attack 1
+Launch the AMI with a malicious snapshot attached.
 ---Mitigation:
-AWS doesn't allow replacing the snapshotID on the root device.
+We modified initrd to perform a check before mounting the root filesystem. If more than one disk is detected, the boot process will halt.
+As a redundant precaution, we also check System Log - only nvme0* is allowed there.
 ---Test:
-aws ec2 run-instances --image-id ami-08514e4e0cd45a2f4 --block-device-mappings DeviceName=/dev/xvda,Ebs={SnapshotId=snap-0a6ea0aa16e8d63d4}
+aws ec2 run-instances --image-id ami-0816669e11e43908e --block-device-mappings DeviceName=/dev/xvda,Ebs={SnapshotId=snap-0c97f1c43c6bb2043} --instance-type t3a.micro
+---Output:
+Although the instance will start, it will halt before mounting the root filesystem.
+On instance screenshot you can see the last line reads : reboot: System halted
+
+
+---Potential Attack 2
+Launch the AMI with a malicious snapshot as root device.
+---Mitigation:
+AWS doesn't allow to modify the snapshotId of the root device.
+---Test:
+aws ec2 run-instances --image-id ami-0816669e11e43908e --block-device-mappings DeviceName=/dev/sda1,Ebs={SnapshotId=snap-0c97f1c43c6bb2043}
 ---Output:
 An error occurred (InvalidBlockDeviceMapping) when calling the RunInstances operation: snapshotId cannot be modified on root device
 
 
----Attack 2
-Launch the AMI with a malicious snapshot on /dev/xvdb hoping that the AMI will boot it instead of /dev/xvda
----Mitgation:
-In grub.cfg we changed to root=/dev/xvda1.
----Test:
-aws ec2 run-instances --image-id ami-08514e4e0cd45a2f4 --block-device-mappings DeviceName=/dev/xvdb,Ebs={SnapshotId=snap-0a6ea0aa16e8d63d4}
----Output:
-After a few minuted check in the System Log that xvda volume was booted and NOT xvdb
-
-
----Attack 3
-Launch the AMI with /dev/xvda=none and a malicious snapshot on /dev/xvdb, hoping that in the absence of xvda, AMI will boot xvdb.
+---Potential Attack 3
+Launch the AMI with a malicious snapshot on /dev/xvda, and the root device disabled. The AMI will boot the only volume found on /dev/xvda. However it will not be made root device and no future volume attachments will become root device.
 ---Mitigation:
-In grub.cfg we changed to root=/dev/xvda1.
+We check with HTTP API that there is only one device /dev/sda1 and that it is a root device.
 ---Test:
-aws ec2 run-instances --image-id ami-08514e4e0cd45a2f4 --block-device-mappings DeviceName=/dev/xvdb,Ebs={SnapshotId=snap-0a6ea0aa16e8d63d4} DeviceName=/dev/xvda,NoDevice=""
+aws ec2 run-instances --image-id ami-0816669e11e43908e --block-device-mappings DeviceName=/dev/xvda,Ebs={SnapshotId=snap-0c97f1c43c6bb2043} DeviceName=/dev/sda1,NoDevice=""
 ---Output:
-After a few minuted check in the System Log:
-ALERT!  /dev/xvda1 does not exist.  Dropping to a shell!
+In the Instance description Root device is "-" and Block devices is "/dev/xvda"
 
 
----Attack 4
+---Potential Attack 4
 Launch AMI with user data passed in.
 ---Mitigation:
 Since AWS doesn't allow to modify user data while the instance is running, the only way to pass it is during launch.
-DescribeInstanceAttribute userData API call will reveal that data was passed in at launch.
-On top of that, we removed the bootcmd module from AMI's cloud-init. This module is responsible for handling the user Data.
+We check with HTTP API DescribeInstanceAttribute userData that no data was passed.
+Additionally, we removed all modules from AMI's cloud-init which could be used to pass user data to the instance.
 ---Test:
 Create a simple script:
 printf '#!/bin/bash\necho "HELLO FROM USERDATA"' > script
@@ -167,7 +134,7 @@ aws ec2 run-instances --image-id ami-08514e4e0cd45a2f4 --user-data file://script
 User data in oracle AMI MUST NOT be visible in System Log as opposed to stock AMI.
 
 
----Attack 5:
+---Potential Attack 5:
 Start a new snapshot with malicious content. Create an AMI from it. Complete the snapshot with the correct content.
 ---Mitigation:
 AWS does not allow to create AMIs from snapshots in "pending" state.
@@ -177,3 +144,16 @@ aws ebs start-snapshot --volume-size 8
 aws ec2 register-image --root-device-name /dev/xvda --name test --block-device-mappings DeviceName=/dev/xvda,Ebs={SnapshotId=snap-0a1ddfc3fbd47ab98}
 ---Output:
 An error occurred (IncorrectInstanceState) when calling the RegisterImage operation: Snapshot 'snap-0d6c2afe1cc8668bf is not 'completed'
+
+
+---Potential Attack 6
+A malicious admin may try to log in using EC Serial Console
+---Mitigation
+We disabled getty which provides login prompt on the serial port.
+Additionally we assigned random password to all user accounts.
+---Test
+aws ec2-instance-connect send-serial-console-ssh-public-key --instance-id i-04a7be13f23a53f5f --serial-port 0 --ssh-public-key file://serialkey.pub --region us-east-1
+ssh -i serialkey.priv i-04a7be13f23a53f5f.port0@serial-console.ec2-instance-connect.us-east-1.aws
+---Output:
+The first command will succeed in adding ssh pubkey for connection over serial console.
+The second command will show no login prompt from the instance.

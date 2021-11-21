@@ -4,6 +4,7 @@
 [Service]
  ExecStart=/home/ubuntu/server/src/notary
  StandardOutput=file:/dev/tty1
+ StandardError=file:/dev/tty1
  User=ubuntu
  Group=ubuntu
 

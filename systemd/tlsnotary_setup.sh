@@ -41,6 +41,8 @@ echo root:$pass2 | chpasswd
 #using -I to insert rules to the top of the list, i.e. they will appear in iptables in reverse order
 #allow only port 10011 and 10012 and localhost
 iptables -I INPUT -j DROP
+# allow time sync with AWS's NTP listening on link-local address
+iptables -I INPUT -s 169.254.169.123 -j ACCEPT
 iptables -I INPUT -p tcp --dport 10011 -j ACCEPT
 iptables -I INPUT -p tcp --dport 10012 -j ACCEPT
 #anti DoS: allow no more than 6 new connections every 40 seconds

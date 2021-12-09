@@ -14,11 +14,10 @@ In AWS console:
 - create a public snapshot
 - create an image from the snapshot
 - note the AMI ID and make the AMI public.
-
-Launch the AMI you created from AWS management console, making sure that:
-- instance's "launchTime" and volume's "attachTime" happened on the same minute
+- launch the AMI as a t3a.micro instance
+- make sure that instance's "launchTime" and volume's "attachTime" happened on the same minute
   with no more than 2 seconds between the events.
-- Console Output (right-click an instance ->Instance Settings -> Get System Log)
+- make sure that Console Output (right-click an instance ->Instance Settings -> Get System Log)
   is available (after ~5 mins)
 
 -------------------------------------------------------------------------------

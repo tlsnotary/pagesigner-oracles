@@ -15,6 +15,11 @@ if [ "$#" -eq 1 ]; then
     fi
 else
     count=$(blkid | grep $uuid | wc -l)
+    if [ $count == 0 ]; then
+        echo "a disk with uuid $uuid was not detected"
+        echo "please attach it first and rerun"
+        exit 1
+    fi
     if [ $count != 1 ]; then
         echo "more than one disk with uuid $uuid detected"
         echo "please specify explicitely what disk you'd like to modify, e.g:"
@@ -67,8 +72,8 @@ sed -i 's/- ssh//' $DISK/etc/cloud/cloud.cfg
 
 # unpack initrd, add our custom script and repack
 tmp=$(mktemp -d)
-dd if=/boot/initrd.img-5.11.0-1020-aws of=$tmp/microcode bs=512 count=9066
-dd if=/boot/initrd.img-5.11.0-1020-aws of=$tmp/initrd_old bs=512 skip=9066
+dd if=$DISK/boot/initrd.img-5.11.0-1020-aws of=$tmp/microcode bs=512 count=9066
+dd if=$DISK/boot/initrd.img-5.11.0-1020-aws of=$tmp/initrd_old bs=512 skip=9066
 mkdir $tmp/cpio && (unlz4 | cpio -i -D $tmp/cpio) < $tmp/initrd_old
 cp initrd/custom $tmp/cpio/scripts/init-premount/custom
 echo '/scripts/init-premount/custom "$@"' >> $tmp/cpio/scripts/init-premount/ORDER

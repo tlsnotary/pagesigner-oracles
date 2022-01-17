@@ -4,7 +4,8 @@ HOW TO CREATE A PAGESIGNER ORACLE INSTANCE.
 In N.Virginia region launch a t3a.micro instance and attach to it a volume created from
 snap-0c97f1c43c6bb2043 (used by Ubuntu 20.04 LTS ami-083654bd07b5da81d).
 
-Log into the instance and run: 
+Log into the instance and run:
+sudo apt update && sudo apt install liblz4-tool
 git clone --recurse-submodules https://github.com/tlsnotary/pagesigner-oracles
 cd pagesigner-oracles
 sudo ./make_oracle.sh

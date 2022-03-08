@@ -1,8 +1,9 @@
 -------------------------------------------------------------------------------
 HOW TO CREATE A PAGESIGNER ORACLE INSTANCE.
 -------------------------------------------------------------------------------
-In N.Virginia region launch a t3a.micro instance and attach to it a volume created from
-snap-0c97f1c43c6bb2043 (used by Ubuntu 20.04 LTS ami-083654bd07b5da81d).
+In N.Virginia region launch a Ubuntu Server 18.04 LTS t3a.micro instance. After
+the instance has started, attach to it a volume created from snap-0c97f1c43c6bb2043
+(this snap is the one used by Ubuntu 20.04 LTS ami-083654bd07b5da81d).
 
 Log into the instance and run:
 sudo apt update && sudo apt install liblz4-tool
@@ -18,8 +19,9 @@ In AWS console:
 - launch the AMI as a t3a.micro instance
 - make sure that instance's "launchTime" and volume's "attachTime" happened on the same minute
   with no more than 2 seconds between the events.
-- make sure that Console Output (right-click an instance ->Instance Settings -> Get System Log)
-  is available (after ~5 mins)
+- make sure that Console Output is available (after ~5 mins) (right-click an 
+instance -> Instance Settings (or Monitor and Troubleshoot) -> Get System Log)
+  
 
 -------------------------------------------------------------------------------
 HOW TO PROVE THAT AN INSTANCE IS A CORRECTLY SET UP ORACLE
